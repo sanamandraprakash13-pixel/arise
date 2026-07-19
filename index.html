@@ -202,6 +202,13 @@
                             <input type="file" accept=".json" onchange="app.importData(event)" class="hidden">
                         </label>
 
+                        <button onclick="app.downloadIndexedDbData()"
+                            class="w-full flex items-center justify-center space-x-2 p-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-white rounded-xl text-sm transition">
+                            <i data-lucide="database"
+                                class="w-4 h-4 text-violet-500 dark:text-violet-400"></i><span>Download
+                                IndexedDB Data</span>
+                        </button>
+
                         <button id="install-btn"
                             class="hidden w-full flex items-center justify-center space-x-2 p-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm transition">
 
@@ -268,21 +275,100 @@
 
         const EMOJIS = ['😫', '😕', '😐', '🙂', '😌', '🤩', '🔥'];
 
+        const DATA_DB_NAME = 'arise-storage';
+        const DATA_DB_VERSION = 1;
+        const DATA_STORE_NAME = 'app-data';
+        const DATA_KEY = 'life_os_v6';
+
+        const createDefaultData = () => {
+            const data = { userName: 'Explorer', pillars: {}, tasks: [], taskCompletions: {}, journal: [], mood: {} };
+            PILLARS.forEach(p => { data.pillars[p.id] = { goals: [], achievements: [] }; });
+            return data;
+        };
+
+        const openDataDb = () => new Promise((resolve, reject) => {
+            if (!('indexedDB' in window)) {
+                reject(new Error('IndexedDB is not supported in this browser.'));
+                return;
+            }
+
+            const request = indexedDB.open(DATA_DB_NAME, DATA_DB_VERSION);
+
+            request.onupgradeneeded = () => {
+                const db = request.result;
+                if (!db.objectStoreNames.contains(DATA_STORE_NAME)) {
+                    db.createObjectStore(DATA_STORE_NAME);
+                }
+            };
+
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error || new Error('Failed to open IndexedDB.'));
+        });
+
+        const readStoredData = async () => {
+            const db = await openDataDb();
+            try {
+                return await new Promise((resolve, reject) => {
+                    const tx = db.transaction(DATA_STORE_NAME, 'readonly');
+                    const store = tx.objectStore(DATA_STORE_NAME);
+                    const request = store.get(DATA_KEY);
+
+                    request.onsuccess = () => resolve(request.result || null);
+                    request.onerror = () => reject(request.error || new Error('Failed to read IndexedDB data.'));
+                });
+            } finally {
+                db.close();
+            }
+        };
+
+        const writeStoredData = async (data) => {
+            const db = await openDataDb();
+            try {
+                await new Promise((resolve, reject) => {
+                    const tx = db.transaction(DATA_STORE_NAME, 'readwrite');
+                    const store = tx.objectStore(DATA_STORE_NAME);
+                    store.put(data, DATA_KEY);
+                    tx.oncomplete = () => resolve();
+                    tx.onerror = () => reject(tx.error || new Error('Failed to write IndexedDB data.'));
+                    tx.onabort = () => reject(tx.error || new Error('IndexedDB write aborted.'));
+                });
+            } finally {
+                db.close();
+            }
+        };
+
+        const deleteStoredData = async () => {
+            const db = await openDataDb();
+            try {
+                await new Promise((resolve, reject) => {
+                    const tx = db.transaction(DATA_STORE_NAME, 'readwrite');
+                    const store = tx.objectStore(DATA_STORE_NAME);
+                    store.delete(DATA_KEY);
+                    tx.oncomplete = () => resolve();
+                    tx.onerror = () => reject(tx.error || new Error('Failed to delete IndexedDB data.'));
+                    tx.onabort = () => reject(tx.error || new Error('IndexedDB delete aborted.'));
+                });
+            } finally {
+                db.close();
+            }
+        };
+
         const app = {
-            data: { userName: 'Explorer', pillars: {}, tasks: [], taskCompletions: {}, journal: [], mood: {} },
+            data: createDefaultData(),
             currentTab: 'today',
+            previousTab: 'today',
             currentDate: '',
             activePillarId: null,
             activeModalTab: 'tasks',
             saveTimeout: null,
 
-            init() {
+            async init() {
                 const today = new Date();
                 this.currentDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
                 document.getElementById('date-picker').value = this.currentDate;
 
-                this.loadData();
-                this.migrateData();
+                await this.loadData();
+                await this.migrateData();
                 this.updateHeaderStats();
 
                 // Initialize Theme Icon
@@ -292,16 +378,33 @@
                 this.switchTab('today');
             },
 
-            loadData() {
-                const saved = localStorage.getItem('life_os_v6');
-                if (saved) {
-                    this.data = JSON.parse(saved);
-                } else {
-                    PILLARS.forEach(p => { this.data.pillars[p.id] = { goals: [], achievements: [] }; });
+            async loadData() {
+                try {
+                    const saved = await readStoredData();
+                    this.data = saved ? this.normalizeData(saved) : createDefaultData();
+                } catch (err) {
+                    this.data = createDefaultData();
                 }
             },
 
-            migrateData() {
+            normalizeData(data) {
+                const normalized = { ...createDefaultData(), ...data };
+                normalized.pillars = normalized.pillars || {};
+                PILLARS.forEach(p => {
+                    if (!normalized.pillars[p.id]) normalized.pillars[p.id] = { goals: [], achievements: [] };
+                    if (!normalized.pillars[p.id].goals) normalized.pillars[p.id].goals = [];
+                    if (!normalized.pillars[p.id].achievements) normalized.pillars[p.id].achievements = [];
+                });
+                normalized.tasks = Array.isArray(normalized.tasks) ? normalized.tasks : [];
+                normalized.taskCompletions = normalized.taskCompletions && typeof normalized.taskCompletions === 'object' ? normalized.taskCompletions : {};
+                normalized.journal = Array.isArray(normalized.journal) ? normalized.journal : [];
+                normalized.mood = normalized.mood && typeof normalized.mood === 'object' ? normalized.mood : {};
+                normalized.userName = normalized.userName || 'Explorer';
+                return normalized;
+            },
+
+            async migrateData() {
+                this.data = this.normalizeData(this.data);
                 if (!this.data.userName) this.data.userName = 'Explorer';
                 if (!this.data.taskCompletions) this.data.taskCompletions = {};
                 if (!this.data.mood) this.data.mood = {};
@@ -316,11 +419,16 @@
                         }
                     }
                 });
-                this.saveData();
+                await this.saveData();
             },
 
-            saveData() {
-                localStorage.setItem('life_os_v6', JSON.stringify(this.data));
+            async saveData() {
+                this.data = this.normalizeData(this.data);
+                try {
+                    await writeStoredData(this.data);
+                } catch (err) {
+                    console.error('Failed to save data to IndexedDB.', err);
+                }
                 this.updateHeaderStats();
             },
 
@@ -383,10 +491,119 @@
                 if (this.currentTab === 'today') this.renderToday(document.getElementById('main-content'));
             },
 
+            toggleIndexedDbViewer() {
+                const viewer = document.getElementById('indexeddb-viewer');
+                if (!viewer) return;
+
+                const shouldShow = viewer.classList.contains('hidden');
+                viewer.classList.toggle('hidden', !shouldShow);
+
+                if (shouldShow) {
+                    this.refreshIndexedDbViewer();
+                }
+            },
+
+            async refreshIndexedDbViewer() {
+                const content = document.getElementById('indexeddb-viewer-content');
+                if (!content) return;
+
+                content.innerHTML = '<div class="text-sm text-slate-500 dark:text-slate-400">Loading from IndexedDB...</div>';
+
+                try {
+                    const stored = await readStoredData();
+                    const data = stored ? this.normalizeData(stored) : createDefaultData();
+                    const pilllarsSummary = PILLARS.map(p => {
+                        const pillarData = data.pillars[p.id] || { goals: [], achievements: [] };
+                        const taskCount = data.tasks.filter(t => t.pillar === p.id).length;
+                        return `
+                            <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="flex items-center gap-2 min-w-0">
+                                        <span class="w-2.5 h-2.5 rounded-full ${p.color}"></span>
+                                        <span class="font-semibold text-sm text-slate-800 dark:text-white truncate">${p.name}</span>
+                                    </div>
+                                    <span class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">${taskCount} tasks</span>
+                                </div>
+                                <div class="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-600 dark:text-slate-300">
+                                    <div class="rounded-lg bg-slate-50 dark:bg-slate-950 px-2 py-2">Goals: <span class="font-semibold text-slate-800 dark:text-white">${pillarData.goals.length}</span></div>
+                                    <div class="rounded-lg bg-slate-50 dark:bg-slate-950 px-2 py-2">Achievements: <span class="font-semibold text-slate-800 dark:text-white">${pillarData.achievements.length}</span></div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+
+                    const taskCompletionCount = Object.values(data.taskCompletions || {}).reduce((total, dates) => total + (Array.isArray(dates) ? dates.length : 0), 0);
+                    const journalEntries = data.journal || [];
+                    const moodEntries = Object.keys(data.mood || {}).length;
+
+                    content.innerHTML = `
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
+                                <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">User</div>
+                                <div class="mt-1 text-sm font-semibold text-slate-800 dark:text-white">${this.escapeHTML(data.userName)}</div>
+                            </div>
+                            <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
+                                <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Tasks</div>
+                                <div class="mt-1 text-sm font-semibold text-slate-800 dark:text-white">${data.tasks.length}</div>
+                            </div>
+                            <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
+                                <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Completions</div>
+                                <div class="mt-1 text-sm font-semibold text-slate-800 dark:text-white">${taskCompletionCount}</div>
+                            </div>
+                            <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
+                                <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Journal</div>
+                                <div class="mt-1 text-sm font-semibold text-slate-800 dark:text-white">${journalEntries.length}</div>
+                            </div>
+                        </div>
+
+                        <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
+                            <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Pillars</div>
+                            <div class="space-y-2">${pilllarsSummary}</div>
+                        </div>
+
+                        <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
+                            <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Mood Entries</div>
+                            <div class="text-sm text-slate-800 dark:text-slate-200">${moodEntries} saved days</div>
+                        </div>
+
+                        <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
+                            <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Raw IndexedDB Record</div>
+                            <pre class="text-[11px] leading-relaxed whitespace-pre-wrap break-words text-slate-700 dark:text-slate-300">${this.escapeHTML(JSON.stringify(data, null, 2))}</pre>
+                        </div>
+                    `;
+                } catch (err) {
+                    content.innerHTML = `
+                        <div class="rounded-xl border border-rose-200 dark:border-rose-500/20 bg-rose-50 dark:bg-rose-500/10 p-3 text-sm text-rose-700 dark:text-rose-300">
+                            Unable to load IndexedDB data. ${this.escapeHTML(err.message || 'Unknown error')}
+                        </div>
+                    `;
+                }
+
+                lucide.createIcons();
+            },
+
             exportData() {
                 const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(this.data));
                 const a = document.createElement('a'); a.href = dataStr; a.download = `ARISE_Backup_${this.currentDate}.json`;
                 document.body.appendChild(a); a.click(); a.remove();
+            },
+
+            async downloadIndexedDbData() {
+                try {
+                    const stored = await readStoredData();
+                    const data = stored ? this.normalizeData(stored) : createDefaultData();
+                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `ARISE_IndexedDB_${this.currentDate}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    URL.revokeObjectURL(url);
+                } catch (err) {
+                    alert('Unable to download IndexedDB data.');
+                }
             },
 
             importData(e) {
@@ -412,8 +629,7 @@
 
             factoryReset() {
                 if (confirm("WARNING: This will permanently delete all your tasks, logs, and settings. Are you sure?")) {
-                    localStorage.removeItem('life_os_v6');
-                    window.location.reload();
+                    deleteStoredData().finally(() => window.location.reload());
                 }
             },
 
@@ -543,10 +759,12 @@
                     btn.classList.remove('text-emerald-500', 'dark:text-emerald-400');
                     btn.classList.add('text-slate-400');
                 });
-                const activeBtn = document.getElementById(`nav-${tabId}`);
-                if (activeBtn) {
-                    activeBtn.classList.remove('text-slate-400');
-                    activeBtn.classList.add('text-emerald-500', 'dark:text-emerald-400');
+                if (tabId !== 'indexeddb') {
+                    const activeBtn = document.getElementById(`nav-${tabId}`);
+                    if (activeBtn) {
+                        activeBtn.classList.remove('text-slate-400');
+                        activeBtn.classList.add('text-emerald-500', 'dark:text-emerald-400');
+                    }
                 }
                 this.render();
             },
@@ -558,6 +776,7 @@
                 else if (this.currentTab === 'growth') this.renderGrowth(main);
                 else if (this.currentTab === 'progress') this.renderProgress(main);
                 else if (this.currentTab === 'journal') this.renderJournal(main);
+                else if (this.currentTab === 'indexeddb') this.renderIndexedDbPage(main);
                 lucide.createIcons();
             },
 
