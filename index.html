@@ -1,0 +1,1266 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="manifest.json">
+
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+    <meta name="apple-mobile-web-app-title" content="ARISE">
+
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>ARISE</title>
+
+    <!-- Prevent Flash of Unstyled Content (Theme) -->
+    <script>
+        if (localStorage.theme === 'light') {
+            document.documentElement.classList.remove('dark');
+        } else {
+            document.documentElement.classList.add('dark'); // Default to dark
+        }
+    </script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: { slate: { 850: '#151e2e', 950: '#020617' } }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            overscroll-behavior-y: none;
+        }
+
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        #growth-modal {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .modal-open {
+            transform: translateY(0%);
+        }
+
+        .modal-closed {
+            transform: translateY(100%);
+        }
+
+        .pb-safe {
+            padding-bottom: env(safe-area-inset-bottom, 20px);
+        }
+
+        .pt-safe {
+            padding-top: env(safe-area-inset-top, 0px);
+        }
+
+        /* Dark mode date picker icon fix */
+        .dark input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            opacity: 0.5;
+            cursor: pointer;
+        }
+
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            opacity: 0.5;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body class="flex flex-col h-screen w-full relative bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
+
+    <!-- TOP HEADER -->
+    <header
+        class="fixed top-0 w-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 h-16 pt-safe z-40 flex items-center justify-between px-4 transition-colors duration-300">
+        <!-- Left: Stats -->
+        <div class="flex items-center space-x-4 text-sm font-medium">
+            <div class="flex items-center space-x-1 text-orange-500 dark:text-orange-400" title="Active Days Streak">
+                <i data-lucide="flame" class="w-5 h-5"></i>
+                <span id="header-streak" class="text-slate-800 dark:text-slate-200">0</span>
+            </div>
+            <div class="flex items-center space-x-1 text-emerald-500 dark:text-emerald-400"
+                title="Tasks Completed Today">
+                <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+                <span id="header-tasks" class="text-slate-800 dark:text-slate-200">0</span>
+            </div>
+        </div>
+
+        <!-- Center: Date -->
+        <div class="absolute left-1/2 transform -translate-x-1/2">
+            <input type="date" id="date-picker" onchange="app.changeDate(this.value)"
+                class="bg-slate-100 dark:bg-slate-800/80 text-slate-800 dark:text-white border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1 text-sm font-semibold outline-none focus:border-emerald-500 transition shadow-sm cursor-pointer">
+        </div>
+
+        <!-- Right: Controls -->
+        <div class="flex items-center space-x-2">
+            <button onclick="app.toggleTheme()"
+                class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-emerald-500 dark:hover:text-emerald-400 transition shadow-sm"
+                title="Toggle Theme">
+                <i data-lucide="moon" id="theme-icon" class="w-4 h-4"></i>
+            </button>
+            <button onclick="app.openProfile()"
+                class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-emerald-500 dark:hover:text-emerald-400 transition shadow-sm"
+                title="Profile & Settings">
+                <i data-lucide="user" class="w-4 h-4"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN WORKSPACE -->
+    <!-- Changed to flex flex-col so Journal can properly stretch -->
+    <main id="main-content"
+        class="flex-1 flex flex-col overflow-y-auto w-full max-w-3xl mx-auto pt-20 pb-20 px-4 hide-scrollbar transition-colors duration-300">
+    </main>
+
+    <!-- BOTTOM NAVIGATION -->
+    <nav
+        class="fixed bottom-0 w-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 h-16 pb-safe z-40 flex justify-around items-center px-2 transition-colors duration-300">
+        <button onclick="app.switchTab('today')" id="nav-today"
+            class="nav-btn flex flex-col items-center justify-center w-full h-full text-emerald-500 dark:text-emerald-400 transition">
+            <i data-lucide="layout-dashboard" class="w-6 h-6 mb-1"></i><span
+                class="text-[10px] font-medium">Today</span>
+        </button>
+        <button onclick="app.switchTab('growth')" id="nav-growth"
+            class="nav-btn flex flex-col items-center justify-center w-full h-full text-slate-400 hover:text-emerald-500 dark:hover:text-emerald-400 transition">
+            <i data-lucide="grid" class="w-6 h-6 mb-1"></i><span class="text-[10px] font-medium">Growth</span>
+        </button>
+        <button onclick="app.switchTab('progress')" id="nav-progress"
+            class="nav-btn flex flex-col items-center justify-center w-full h-full text-slate-400 hover:text-emerald-500 dark:hover:text-emerald-400 transition">
+            <i data-lucide="activity" class="w-6 h-6 mb-1"></i><span class="text-[10px] font-medium">Progress</span>
+        </button>
+        <button onclick="app.switchTab('journal')" id="nav-journal"
+            class="nav-btn flex flex-col items-center justify-center w-full h-full text-slate-400 hover:text-emerald-500 dark:hover:text-emerald-400 transition">
+            <i data-lucide="book" class="w-6 h-6 mb-1"></i><span class="text-[10px] font-medium">Journal</span>
+        </button>
+    </nav>
+
+    <!-- PROFILE & SETTINGS MODAL -->
+    <div id="profile-modal"
+        class="fixed inset-0 bg-black/50 dark:bg-black/80 z-50 hidden flex items-center justify-center p-4 transition-opacity opacity-0 backdrop-blur-sm">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl transform scale-95 transition-transform duration-200"
+            id="profile-box">
+            <div
+                class="p-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-950/50">
+                <h3 class="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                    <i data-lucide="user" class="w-5 h-5 text-emerald-500 dark:text-emerald-400"></i> Profile Setting
+                </h3>
+                <button onclick="app.closeProfile()"
+                    class="text-slate-500 hover:text-slate-800 dark:hover:text-white p-1 transition"><i data-lucide="x"
+                        class="w-5 h-5"></i></button>
+            </div>
+
+            <div class="p-5 space-y-6">
+                <div>
+                    <label
+                        class="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold mb-2 block">Operator
+                        Name</label>
+                    <input type="text" id="profile-name" onchange="app.saveProfileName(this.value)"
+                        class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-white focus:border-emerald-500 outline-none transition"
+                        placeholder="Your Name">
+                </div>
+
+                <div>
+                    <label
+                        class="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold mb-2 block">Data
+                        Management</label>
+                    <div class="space-y-2">
+                        <button onclick="app.exportData()"
+                            class="w-full flex items-center justify-center space-x-2 p-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-white rounded-xl text-sm transition">
+                            <i data-lucide="download"
+                                class="w-4 h-4 text-emerald-500 dark:text-emerald-400"></i><span>Export Backup
+                                (.json)</span>
+                        </button>
+                        <label
+                            class="w-full flex items-center justify-center space-x-2 p-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-white rounded-xl text-sm transition cursor-pointer">
+                            <i data-lucide="upload" class="w-4 h-4 text-cyan-500 dark:text-cyan-400"></i><span>Import
+                                Backup</span>
+                            <input type="file" accept=".json" onchange="app.importData(event)" class="hidden">
+                        </label>
+
+                        <button id="install-btn"
+                            class="hidden w-full flex items-center justify-center space-x-2 p-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm transition">
+
+                            <i data-lucide="download"></i>
+                            <span>Install ARISE App</span>
+
+                        </button>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-200 dark:border-slate-800">
+                    <button onclick="app.factoryReset()"
+                        class="w-full flex items-center justify-center space-x-2 p-3 bg-rose-100 dark:bg-rose-500/10 hover:bg-rose-200 dark:hover:bg-rose-500/20 text-rose-600 dark:text-rose-500 border border-rose-200 dark:border-rose-500/20 rounded-xl text-sm transition font-medium">
+                        <i data-lucide="alert-triangle" class="w-4 h-4"></i><span>Factory Reset</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- GROWTH MODAL (Bottom Sheet) -->
+    <div id="modal-backdrop" class="fixed inset-0 bg-black/60 z-[45] hidden transition-opacity"
+        onclick="app.closeModal()"></div>
+    <div id="growth-modal"
+        class="fixed bottom-0 left-0 right-0 max-w-3xl mx-auto bg-white dark:bg-slate-900 rounded-t-3xl border-t border-slate-200 dark:border-slate-700 z-50 flex flex-col h-[85vh] modal-closed shadow-2xl transition-colors duration-300">
+        <div class="p-4 flex items-center justify-between border-b border-slate-200 dark:border-slate-800">
+            <div class="flex items-center space-x-3">
+                <div id="modal-icon" class="p-2 rounded-xl text-white"><i data-lucide="circle" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <h3 id="modal-title" class="text-xl font-bold text-slate-800 dark:text-white">Pillar</h3>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">Manage structure</p>
+                </div>
+            </div>
+            <button onclick="app.closeModal()"
+                class="w-8 h-8 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition"><i
+                    data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+
+        <div class="flex border-b border-slate-200 dark:border-slate-800 shrink-0">
+            <button onclick="app.setModalTab('goals')" id="mtab-goals"
+                class="flex-1 py-3 text-sm font-semibold text-slate-400 border-b-2 border-transparent focus:outline-none">Goals</button>
+            <button onclick="app.setModalTab('tasks')" id="mtab-tasks"
+                class="flex-1 py-3 text-sm font-semibold text-slate-400 border-b-2 border-transparent focus:outline-none">Tasks</button>
+            <button onclick="app.setModalTab('achievements')" id="mtab-achievements"
+                class="flex-1 py-3 text-sm font-semibold text-slate-400 border-b-2 border-transparent focus:outline-none">Achievements</button>
+        </div>
+
+        <div id="modal-content" class="flex-1 overflow-y-auto p-4 hide-scrollbar bg-slate-50 dark:bg-slate-950/50">
+        </div>
+    </div>
+
+    <script>
+        const PILLARS = [
+            { id: 'health', name: 'Health', icon: 'heart', color: 'bg-rose-500', text: 'text-rose-500 dark:text-rose-400' },
+            { id: 'knowledge', name: 'Knowledge', icon: 'brain', color: 'bg-blue-500', text: 'text-blue-500 dark:text-blue-400' },
+            { id: 'career', name: 'Career', icon: 'briefcase', color: 'bg-amber-500', text: 'text-amber-500 dark:text-amber-400' },
+            { id: 'wealth', name: 'Wealth', icon: 'wallet', color: 'bg-emerald-500', text: 'text-emerald-500 dark:text-emerald-400' },
+            { id: 'relationship', name: 'Relationship', icon: 'users', color: 'bg-pink-500', text: 'text-pink-500 dark:text-pink-400' },
+            { id: 'spirituality', name: 'Spirituality', icon: 'sparkles', color: 'bg-violet-500', text: 'text-violet-500 dark:text-violet-400' },
+            { id: 'lifestyle', name: 'Lifestyle', icon: 'compass', color: 'bg-cyan-500', text: 'text-cyan-500 dark:text-cyan-400' }
+        ];
+
+        const EMOJIS = ['😫', '😕', '😐', '🙂', '😌', '🤩', '🔥'];
+
+        const app = {
+            data: { userName: 'Explorer', pillars: {}, tasks: [], taskCompletions: {}, journal: [], mood: {} },
+            currentTab: 'today',
+            currentDate: '',
+            activePillarId: null,
+            activeModalTab: 'tasks',
+            saveTimeout: null,
+
+            init() {
+                const today = new Date();
+                this.currentDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                document.getElementById('date-picker').value = this.currentDate;
+
+                this.loadData();
+                this.migrateData();
+                this.updateHeaderStats();
+
+                // Initialize Theme Icon
+                const isDark = document.documentElement.classList.contains('dark');
+                document.getElementById('theme-icon').setAttribute('data-lucide', isDark ? 'sun' : 'moon');
+
+                this.switchTab('today');
+            },
+
+            loadData() {
+                const saved = localStorage.getItem('life_os_v6');
+                if (saved) {
+                    this.data = JSON.parse(saved);
+                } else {
+                    PILLARS.forEach(p => { this.data.pillars[p.id] = { goals: [], achievements: [] }; });
+                }
+            },
+
+            migrateData() {
+                if (!this.data.userName) this.data.userName = 'Explorer';
+                if (!this.data.taskCompletions) this.data.taskCompletions = {};
+                if (!this.data.mood) this.data.mood = {};
+
+                this.data.tasks.forEach(t => {
+                    if (!t.frequency) {
+                        t.frequency = 'once';
+                        t.startDate = t.date || this.currentDate;
+                        if (t.completed && t.date) {
+                            if (!this.data.taskCompletions[t.id]) this.data.taskCompletions[t.id] = [];
+                            if (!this.data.taskCompletions[t.id].includes(t.date)) this.data.taskCompletions[t.id].push(t.date);
+                        }
+                    }
+                });
+                this.saveData();
+            },
+
+            saveData() {
+                localStorage.setItem('life_os_v6', JSON.stringify(this.data));
+                this.updateHeaderStats();
+            },
+
+            changeDate(newDate) {
+                if (!newDate) return;
+                this.currentDate = newDate;
+                this.updateHeaderStats();
+                this.render();
+            },
+
+            changeDateOffset(days) {
+                const d = this.parseDateString(this.currentDate);
+                d.setDate(d.getDate() + days);
+                const newDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                document.getElementById('date-picker').value = newDate;
+                this.changeDate(newDate);
+            },
+
+            // --- THEME ---
+            toggleTheme() {
+                const htmlClasses = document.documentElement.classList;
+                if (htmlClasses.contains('dark')) {
+                    htmlClasses.remove('dark');
+                    localStorage.theme = 'light';
+                    document.getElementById('theme-icon').setAttribute('data-lucide', 'moon');
+                } else {
+                    htmlClasses.add('dark');
+                    localStorage.theme = 'dark';
+                    document.getElementById('theme-icon').setAttribute('data-lucide', 'sun');
+                }
+                lucide.createIcons();
+                // Re-render chart if on progress tab to match new colors
+                if (this.currentTab === 'progress') this.renderProgress(document.getElementById('main-content'));
+            },
+
+            // --- PROFILE SETTINGS ---
+            openProfile() {
+                document.getElementById('profile-name').value = this.data.userName;
+                const modal = document.getElementById('profile-modal');
+                const box = document.getElementById('profile-box');
+                modal.classList.remove('hidden');
+
+                requestAnimationFrame(() => {
+                    modal.classList.remove('opacity-0');
+                    box.classList.remove('scale-95');
+                });
+            },
+
+            closeProfile() {
+                const modal = document.getElementById('profile-modal');
+                const box = document.getElementById('profile-box');
+                modal.classList.add('opacity-0');
+                box.classList.add('scale-95');
+                setTimeout(() => modal.classList.add('hidden'), 200);
+            },
+
+            saveProfileName(val) {
+                this.data.userName = val.trim() || 'Explorer';
+                this.saveData();
+                if (this.currentTab === 'today') this.renderToday(document.getElementById('main-content'));
+            },
+
+            exportData() {
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(this.data));
+                const a = document.createElement('a'); a.href = dataStr; a.download = `ARISE_Backup_${this.currentDate}.json`;
+                document.body.appendChild(a); a.click(); a.remove();
+            },
+
+            importData(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const parsed = JSON.parse(event.target.result);
+                        if (parsed.pillars) {
+                            this.data = parsed;
+                            this.saveData();
+                            this.closeProfile();
+                            this.render();
+                            alert("Data imported successfully!");
+                        } else throw new Error();
+                    } catch (err) {
+                        alert("Invalid backup file.");
+                    }
+                };
+                reader.readAsText(file);
+            },
+
+            factoryReset() {
+                if (confirm("WARNING: This will permanently delete all your tasks, logs, and settings. Are you sure?")) {
+                    localStorage.removeItem('life_os_v6');
+                    window.location.reload();
+                }
+            },
+
+            // --- DATE & TASK LOGIC ---
+            parseDateString(dateStr) {
+                const [y, m, d] = dateStr.split('-');
+                return new Date(y, m - 1, d);
+            },
+
+            shouldShowTask(task, dateStr) {
+                const targetDate = this.parseDateString(dateStr);
+                const startDate = this.parseDateString(task.startDate);
+
+                targetDate.setHours(0, 0, 0, 0);
+                startDate.setHours(0, 0, 0, 0);
+
+                if (targetDate < startDate) return false;
+
+                const diffTime = Math.abs(targetDate - startDate);
+                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                const targetDayOfWeek = targetDate.getDay();
+
+                switch (task.frequency) {
+                    case 'once': return dateStr === task.startDate;
+                    case 'daily': return true;
+                    case 'weekly': return targetDate.getDay() === startDate.getDay();
+                    case 'biweekly':
+                        const weeksDiff = Math.floor(diffDays / 7);
+                        return (targetDate.getDay() === startDate.getDay()) && (weeksDiff % 2 === 0);
+                    case 'monthly': return targetDate.getDate() === startDate.getDate();
+                    case 'custom': return task.customDays && task.customDays.includes(targetDayOfWeek);
+                    default: return false;
+                }
+            },
+
+            isTaskCompleted(taskId, dateStr) {
+                return this.data.taskCompletions[taskId] && this.data.taskCompletions[taskId].includes(dateStr);
+            },
+
+            toggleTaskCompletion(taskId, dateStr) {
+                if (!this.data.taskCompletions[taskId]) this.data.taskCompletions[taskId] = [];
+                const idx = this.data.taskCompletions[taskId].indexOf(dateStr);
+
+                if (idx > -1) this.data.taskCompletions[taskId].splice(idx, 1);
+                else this.data.taskCompletions[taskId].push(dateStr);
+
+                this.saveData();
+            },
+
+            updateHeaderStats() {
+                const visibleTasks = this.data.tasks.filter(t => this.shouldShowTask(t, this.currentDate));
+                const completedToday = visibleTasks.filter(t => this.isTaskCompleted(t.id, this.currentDate)).length;
+                const headerTasks = document.getElementById('header-tasks');
+                if (headerTasks) headerTasks.innerText = `${completedToday}/${visibleTasks.length}`;
+
+                const activeDatesSet = new Set();
+                Object.values(this.data.taskCompletions).forEach(dates => dates.forEach(d => activeDatesSet.add(d)));
+
+                let streak = 0;
+                // Anchor the global streak calculation to the currently selected viewing date
+                let checkDate = this.parseDateString(this.currentDate);
+                const checkDateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+
+                // If the current viewing date has no activity, start calculating backwards from yesterday
+                if (!activeDatesSet.has(checkDateStr)) {
+                    checkDate.setDate(checkDate.getDate() - 1);
+                }
+
+                for (let i = 0; i < 1000; i++) {
+                    const dStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+                    if (activeDatesSet.has(dStr)) {
+                        streak++;
+                        checkDate.setDate(checkDate.getDate() - 1);
+                    } else {
+                        break;
+                    }
+                }
+
+                const headerStreak = document.getElementById('header-streak');
+                if (headerStreak) headerStreak.innerText = streak;
+            },
+
+            getTaskStreak(taskId, referenceDateStr) {
+                const task = this.data.tasks.find(t => t.id === taskId);
+                if (!task) return 0;
+                const completions = this.data.taskCompletions[taskId] || [];
+                if (completions.length === 0) return 0;
+
+                let streak = 0;
+                let checkDate = this.parseDateString(referenceDateStr);
+                let foundFirst = false;
+                const taskStart = this.parseDateString(task.startDate);
+
+                for (let i = 0; i < 1000; i++) {
+                    if (checkDate < taskStart) break;
+
+                    const dStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+
+                    if (this.shouldShowTask(task, dStr)) {
+                        const isCompleted = completions.includes(dStr);
+
+                        if (!foundFirst) {
+                            foundFirst = true;
+                            if (!isCompleted && dStr === referenceDateStr) {
+                                // Missing today does not break the streak yet, as the day is still ongoing
+                            } else if (isCompleted) {
+                                streak++;
+                            } else {
+                                break; // Missed a past required day -> streak broken
+                            }
+                        } else {
+                            if (isCompleted) {
+                                streak++;
+                            } else {
+                                break; // Streak broken
+                            }
+                        }
+                    }
+                    checkDate.setDate(checkDate.getDate() - 1);
+                }
+                return streak;
+            },
+
+            switchTab(tabId) {
+                this.currentTab = tabId;
+                document.querySelectorAll('.nav-btn').forEach(btn => {
+                    btn.classList.remove('text-emerald-500', 'dark:text-emerald-400');
+                    btn.classList.add('text-slate-400');
+                });
+                const activeBtn = document.getElementById(`nav-${tabId}`);
+                if (activeBtn) {
+                    activeBtn.classList.remove('text-slate-400');
+                    activeBtn.classList.add('text-emerald-500', 'dark:text-emerald-400');
+                }
+                this.render();
+            },
+
+            render() {
+                const main = document.getElementById('main-content');
+                main.innerHTML = '';
+                if (this.currentTab === 'today') this.renderToday(main);
+                else if (this.currentTab === 'growth') this.renderGrowth(main);
+                else if (this.currentTab === 'progress') this.renderProgress(main);
+                else if (this.currentTab === 'journal') this.renderJournal(main);
+                lucide.createIcons();
+            },
+
+            // --- TAB 1: TODAY ---
+            renderToday(container) {
+                const visibleTasks = this.data.tasks.filter(t => this.shouldShowTask(t, this.currentDate));
+                const todayMood = this.data.mood[this.currentDate] || { emoji: '', note: '' };
+
+                let html = `
+                    <div class="mb-6 flex justify-between items-end">
+                        <div>
+                            <h2 class="text-3xl font-bold mb-1 tracking-tight text-slate-800 dark:text-white">Good day, ${this.escapeHTML(this.data.userName)}</h2>
+                            <p class="text-sm text-slate-500 dark:text-slate-400">Here is your focus for ${this.currentDate}</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 mb-8 shadow-sm transition-colors duration-300">
+                        <div class="flex items-center space-x-2 mb-4">
+                            <i data-lucide="sun" class="w-5 h-5 text-amber-500 dark:text-amber-400"></i>
+                            <h3 class="text-sm font-bold text-slate-800 dark:text-white">Morning Check-in</h3>
+                        </div>
+                        <div class="flex justify-between mb-4 bg-slate-50 dark:bg-slate-950 p-2 rounded-xl border border-slate-200 dark:border-slate-800 transition-colors duration-300">
+                            ${EMOJIS.map(e => `
+                                <button onclick="app.saveMoodEmoji('${e}')" class="text-2xl transition hover:scale-110 ${todayMood.emoji === e ? 'bg-slate-200 dark:bg-slate-800 rounded-lg shadow-inner' : 'opacity-50 hover:opacity-100'} p-1">${e}</button>
+                            `).join('')}
+                        </div>
+                        <input type="text" id="mood-note" value="${this.escapeHTML(todayMood.note)}" onchange="app.saveMoodNote(this.value)" class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition-colors duration-300" placeholder="How did you wake up?">
+                    </div>
+
+                    <h3 class="text-xl font-bold mb-4 text-slate-800 dark:text-white">Agenda</h3>
+                `;
+
+                if (visibleTasks.length === 0) {
+                    html += `
+                        <div class="text-center py-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm transition-colors duration-300">
+                            <div class="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-3"><i data-lucide="calendar" class="w-6 h-6 text-slate-400"></i></div>
+                            <p class="text-slate-500 dark:text-slate-400 text-sm">No tasks scheduled for this date.</p>
+                        </div>
+                    `;
+                } else {
+                    html += `<div class="space-y-4">`;
+                    PILLARS.forEach(p => {
+                        const pTasks = visibleTasks.filter(t => t.pillar === p.id);
+                        if (pTasks.length > 0) {
+                            html += `
+                                <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm transition-colors duration-300">
+                                    <div class="flex items-center space-x-2 mb-3">
+                                        <div class="w-2 h-2 rounded-full ${p.color}"></div>
+                                        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">${p.name}</h3>
+                                    </div>
+                                    <div class="space-y-2">
+                            `;
+                            pTasks.forEach(t => {
+                                const isDone = this.isTaskCompleted(t.id, this.currentDate);
+                                let goalText = '';
+                                if (t.goalId) {
+                                    const goal = this.data.pillars[p.id].goals.find(g => g.id === t.goalId);
+                                    if (goal) goalText = `<p class="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1"><i data-lucide="target" class="w-3 h-3"></i> ${this.escapeHTML(goal.text)}</p>`;
+                                }
+
+                                html += `
+                                    <div class="flex items-start space-x-3 p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800/80 transition-colors duration-300">
+                                        <button onclick="app.toggleTaskFromToday('${t.id}')" class="mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 ${isDone ? 'bg-emerald-500 border-emerald-500 text-white dark:text-slate-950' : 'border-slate-400 dark:border-slate-500'}">
+                                            ${isDone ? '<i data-lucide="check" class="w-3.5 h-3.5 stroke-[3]"></i>' : ''}
+                                        </button>
+                                        <div class="flex-1 min-w-0">
+                                            <span class="text-sm block ${isDone ? 'line-through text-slate-400 dark:text-slate-600' : 'text-slate-800 dark:text-slate-200'}">${this.escapeHTML(t.text)}</span>
+                                            ${goalText}
+                                        </div>
+                                    </div>
+                                `;
+                            });
+                            html += `</div></div>`;
+                        }
+                    });
+                    html += `</div>`;
+                }
+                container.innerHTML = html;
+            },
+
+            saveMoodEmoji(emoji) {
+                if (!this.data.mood[this.currentDate]) this.data.mood[this.currentDate] = { note: '' };
+                this.data.mood[this.currentDate].emoji = emoji;
+                this.saveData();
+                this.renderToday(document.getElementById('main-content'));
+                lucide.createIcons();
+            },
+
+            saveMoodNote(note) {
+                if (!this.data.mood[this.currentDate]) this.data.mood[this.currentDate] = { emoji: '' };
+                this.data.mood[this.currentDate].note = note;
+                this.saveData();
+            },
+
+            toggleTaskFromToday(taskId) {
+                this.toggleTaskCompletion(taskId, this.currentDate);
+                this.updateHeaderStats();
+                this.renderToday(document.getElementById('main-content'));
+                lucide.createIcons();
+            },
+
+            // --- TAB 2: GROWTH ---
+            renderGrowth(container) {
+                let html = `
+                    <h2 class="text-2xl font-bold mb-6 text-slate-800 dark:text-white">System Pillars</h2>
+                    <div class="grid grid-cols-2 gap-4">
+                `;
+
+                PILLARS.forEach(p => {
+                    const activeTasks = this.data.tasks.filter(t => t.pillar === p.id && this.shouldShowTask(t, this.currentDate) && !this.isTaskCompleted(t.id, this.currentDate)).length;
+
+                    html += `
+                        <button onclick="app.openModal('${p.id}')" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl flex flex-col items-center justify-center space-y-3 shadow-sm hover:border-slate-300 dark:hover:border-slate-600 transition active:scale-95 text-center transition-colors duration-300">
+                            <div class="p-4 rounded-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 ${p.text}">
+                                <i data-lucide="${p.icon}" class="w-7 h-7"></i>
+                            </div>
+                            <div>
+                                <span class="font-semibold text-sm text-slate-800 dark:text-white block">${p.name}</span>
+                                <span class="text-[10px] text-slate-500 uppercase tracking-wider">${activeTasks} open today</span>
+                            </div>
+                        </button>
+                    `;
+                });
+
+                html += `</div>`;
+                container.innerHTML = html;
+            },
+
+            // --- MODAL & FORMS (Growth Tab) ---
+            openModal(pillarId) {
+                this.activePillarId = pillarId;
+                const p = PILLARS.find(x => x.id === pillarId);
+
+                document.getElementById('modal-title').innerText = p.name;
+                document.getElementById('modal-icon').className = `p-2 rounded-xl text-white ${p.color}`;
+                document.getElementById('modal-icon').innerHTML = `<i data-lucide="${p.icon}" class="w-5 h-5"></i>`;
+
+                document.getElementById('modal-backdrop').classList.remove('hidden');
+                setTimeout(() => {
+                    document.getElementById('growth-modal').classList.remove('modal-closed');
+                    document.getElementById('growth-modal').classList.add('modal-open');
+                }, 10);
+
+                this.setModalTab('tasks');
+            },
+
+            closeModal() {
+                document.getElementById('growth-modal').classList.remove('modal-open');
+                document.getElementById('growth-modal').classList.add('modal-closed');
+                setTimeout(() => document.getElementById('modal-backdrop').classList.add('hidden'), 300);
+            },
+
+            setModalTab(tabId) {
+                this.activeModalTab = tabId;
+                ['goals', 'tasks', 'achievements'].forEach(t => {
+                    const el = document.getElementById(`mtab-${t}`);
+                    if (t === tabId) {
+                        el.classList.add('border-emerald-500', 'text-emerald-500', 'dark:text-emerald-400');
+                        el.classList.remove('border-transparent', 'text-slate-400', 'text-slate-500');
+                    } else {
+                        el.classList.remove('border-emerald-500', 'text-emerald-500', 'dark:text-emerald-400');
+                        el.classList.add('border-transparent', 'text-slate-500', 'dark:text-slate-400');
+                    }
+                });
+                this.renderModalContent();
+                lucide.createIcons();
+            },
+
+            renderModalContent() {
+                const c = document.getElementById('modal-content');
+                const pillar = this.data.pillars[this.activePillarId];
+
+                if (this.activeModalTab === 'goals') {
+                    this.renderGoalsTab(c, pillar.goals);
+                } else if (this.activeModalTab === 'tasks') {
+                    const tasks = this.data.tasks.filter(t => t.pillar === this.activePillarId);
+                    this.renderTasksTab(c, tasks, pillar.goals);
+                } else if (this.activeModalTab === 'achievements') {
+                    this.renderAchievementsTab(c, pillar.achievements);
+                }
+            },
+
+            renderGoalsTab(container, goals) {
+                let html = `
+                    <form onsubmit="app.addGoal(event)" class="flex gap-2 mb-6 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                        <input type="text" id="goal-input" required class="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-white focus:outline-none focus:border-emerald-500" placeholder="New long-term goal...">
+                        <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-lg text-sm text-white"><i data-lucide="plus" class="w-4 h-4"></i></button>
+                    </form>
+                    <div class="space-y-2 pb-10">
+                `;
+                if (goals.length === 0) html += `<div class="text-center py-6 text-sm text-slate-500">No goals set yet.</div>`;
+                goals.forEach(g => {
+                    html += `
+                        <div class="flex justify-between items-center bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
+                            <span class="text-sm text-slate-800 dark:text-slate-200">${this.escapeHTML(g.text)}</span>
+                            <button onclick="app.deleteGoal('${g.id}')" class="text-slate-500 hover:text-rose-500 dark:text-slate-600 dark:hover:text-rose-400"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                        </div>
+                    `;
+                });
+                html += `</div>`;
+                container.innerHTML = html;
+            },
+
+            addGoal(e) {
+                e.preventDefault();
+                const v = document.getElementById('goal-input').value.trim();
+                if (!v) return;
+                this.data.pillars[this.activePillarId].goals.push({ id: 'g-' + Date.now(), text: v, completed: false });
+                this.saveData();
+                this.renderModalContent();
+                lucide.createIcons();
+            },
+
+            deleteGoal(id) {
+                this.data.pillars[this.activePillarId].goals = this.data.pillars[this.activePillarId].goals.filter(g => g.id !== id);
+                this.saveData();
+                this.renderModalContent();
+                lucide.createIcons();
+            },
+
+            renderTasksTab(container, tasks, goals) {
+                let goalOpts = `<option value="">-- Optional Goal Link --</option>`;
+                goals.forEach(g => goalOpts += `<option value="${g.id}">${this.escapeHTML(g.text)}</option>`);
+
+                let html = `
+                    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 mb-6 shadow-sm">
+                        <h4 class="text-sm font-bold text-slate-800 dark:text-white mb-3">Create Routine / Task</h4>
+                        <form onsubmit="app.addTask(event)" class="space-y-3">
+                            <input type="text" id="t-text" required class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-white" placeholder="Task description">
+                            
+                            <select id="t-goal" class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-300">${goalOpts}</select>
+                            
+                            <select id="t-freq" onchange="app.toggleCustomDays()" class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-300">
+                                <option value="once">Once (On Selected Date)</option>
+                                <option value="daily">Daily</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="biweekly">Bi-weekly</option>
+                                <option value="monthly">Monthly</option>
+                                <option value="custom">Custom Days</option>
+                            </select>
+                            
+                            <div id="custom-days-wrap" class="hidden flex justify-between bg-slate-50 dark:bg-slate-950 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
+                                ${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, idx) => `
+                                    <label class="flex flex-col items-center space-y-1">
+                                        <span class="text-[10px] text-slate-500">${day}</span>
+                                        <input type="checkbox" value="${idx}" class="custom-day-cb w-4 h-4 rounded bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-emerald-500">
+                                    </label>
+                                `).join('')}
+                            </div>
+                            
+                            <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 py-2 rounded-lg text-sm font-semibold text-white">Add Task</button>
+                        </form>
+                    </div>
+                    
+                    <div class="space-y-2 pb-10">
+                        <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">All Tasks in Pillar</h4>
+                `;
+
+                if (tasks.length === 0) html += `<div class="text-center py-4 text-xs text-slate-500">No tasks configured.</div>`;
+                tasks.forEach(t => {
+                    html += `
+                        <div class="flex justify-between items-center bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
+                            <div>
+                                <span class="text-sm text-slate-800 dark:text-slate-200 block">${this.escapeHTML(t.text)}</span>
+                                <span class="text-[10px] text-emerald-500 dark:text-emerald-400 uppercase tracking-wider">${t.frequency}</span>
+                            </div>
+                            <button onclick="app.deleteTask('${t.id}')" class="text-slate-500 hover:text-rose-500 dark:text-slate-600 dark:hover:text-rose-400"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                        </div>
+                    `;
+                });
+
+                html += `</div>`;
+                container.innerHTML = html;
+            },
+
+            toggleCustomDays() {
+                const f = document.getElementById('t-freq').value;
+                document.getElementById('custom-days-wrap').style.display = (f === 'custom') ? 'flex' : 'none';
+            },
+
+            addTask(e) {
+                e.preventDefault();
+                const text = document.getElementById('t-text').value.trim();
+                const goalId = document.getElementById('t-goal').value;
+                const freq = document.getElementById('t-freq').value;
+
+                let customDays = [];
+                if (freq === 'custom') {
+                    document.querySelectorAll('.custom-day-cb:checked').forEach(cb => customDays.push(parseInt(cb.value)));
+                    if (customDays.length === 0) return alert("Select at least one day.");
+                }
+
+                this.data.tasks.push({
+                    id: 't-' + Date.now(),
+                    pillar: this.activePillarId,
+                    text: text,
+                    goalId: goalId || null,
+                    frequency: freq,
+                    customDays: customDays,
+                    startDate: this.currentDate
+                });
+
+                this.saveData();
+                this.renderModalContent();
+                lucide.createIcons();
+                if (this.currentTab === 'today') this.renderToday(document.getElementById('main-content'));
+            },
+
+            deleteTask(id) {
+                this.data.tasks = this.data.tasks.filter(t => t.id !== id);
+                delete this.data.taskCompletions[id];
+                this.saveData();
+                this.renderModalContent();
+                lucide.createIcons();
+            },
+
+            renderAchievementsTab(container, achievements) {
+                const tasks = this.data.tasks.filter(t => t.pillar === this.activePillarId);
+                let taskOpts = `<option value="">-- Select Habit/Task --</option>`;
+                tasks.forEach(t => taskOpts += `<option value="${t.id}">${this.escapeHTML(t.text)}</option>`);
+
+                let html = `
+                    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 mb-6 shadow-sm">
+                        <form onsubmit="app.addAchievement(event)" class="space-y-3">
+                            <input type="text" id="a-text" required class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-white" placeholder="Achievement Name (e.g. Iron Will)">
+                            
+                            <select id="a-type" onchange="app.toggleAchType()" class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-300">
+                                <option value="manual">Manual Unlock</option>
+                                <option value="streak">Milestone / Total Completions</option>
+                            </select>
+
+                            <div id="a-streak-wrap" class="hidden space-y-3">
+                                <select id="a-task" class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-300">${taskOpts}</select>
+                                <input type="number" id="a-target" placeholder="Target Completions (e.g. 10)" class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-white">
+                            </div>
+                            
+                            <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 py-2 rounded-lg text-sm font-semibold text-white">Add Achievement</button>
+                        </form>
+                    </div>
+                    
+                    <div class="space-y-2 pb-10">
+                `;
+
+                if (achievements.length === 0) html += `<div class="text-center py-4 text-xs text-slate-500">No achievements configured.</div>`;
+
+                achievements.forEach(a => {
+                    let progressHtml = '';
+                    let isCompleted = a.completed;
+
+                    if (a.type === 'streak' && a.taskId) {
+                        const currentTaskStreak = app.getTaskStreak(a.taskId, app.currentDate);
+                        isCompleted = currentTaskStreak >= a.target;
+                        progressHtml = `<div class="text-[10px] mt-1 ${isCompleted ? 'text-emerald-400' : 'text-slate-500'}">Streak Progress: ${currentTaskStreak} / ${a.target}</div>
+                                        <div class="w-full h-1 bg-slate-800 rounded-full mt-1"><div class="h-full bg-emerald-500 rounded-full" style="width: ${Math.min((currentTaskStreak / a.target) * 100, 100)}%"></div></div>`;
+                    }
+
+                    html += `
+                        <div class="flex items-start justify-between bg-slate-900 p-3 rounded-lg border ${isCompleted ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-slate-800'}">
+                            <div class="flex items-start space-x-3 flex-1 min-w-0">
+                                ${a.type === 'manual' ? `
+                                    <button onclick="app.toggleManualAch('${a.id}')" class="mt-0.5 w-5 h-5 rounded border flex items-center justify-center shrink-0 ${isCompleted ? 'bg-emerald-500 border-emerald-500 text-white dark:text-slate-950' : 'border-slate-300 dark:border-slate-500'}">
+                                        ${isCompleted ? '<i data-lucide="check" class="w-3.5 h-3.5 stroke-[3]"></i>' : ''}
+                                    </button>
+                                ` : `
+                                    <div class="mt-0.5 w-5 h-5 rounded flex items-center justify-center shrink-0 ${isCompleted ? 'text-emerald-500' : 'text-slate-400 dark:text-slate-600'}">
+                                        <i data-lucide="trophy" class="w-4 h-4"></i>
+                                    </div>
+                                `}
+                                <div class="flex-1 min-w-0">
+                                    <span class="text-sm font-medium ${isCompleted ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-200'} block">${this.escapeHTML(a.text)}</span>
+                                    ${progressHtml}
+                                </div>
+                            </div>
+                            <button onclick="app.deleteAchievement('${a.id}')" class="text-slate-500 hover:text-rose-500 dark:text-slate-600 dark:hover:text-rose-400 ml-2"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                        </div>
+                    `;
+                });
+
+                html += `</div>`;
+                container.innerHTML = html;
+            },
+
+            toggleAchType() {
+                const t = document.getElementById('a-type').value;
+                document.getElementById('a-streak-wrap').style.display = (t === 'streak') ? 'block' : 'none';
+            },
+
+            addAchievement(e) {
+                e.preventDefault();
+                const type = document.getElementById('a-type').value;
+                const text = document.getElementById('a-text').value.trim();
+                const ach = { id: 'a-' + Date.now(), text, type, completed: false };
+
+                if (type === 'streak') {
+                    ach.taskId = document.getElementById('a-task').value;
+                    ach.target = parseInt(document.getElementById('a-target').value);
+                    if (!ach.taskId || !ach.target) return alert("Select task and target count.");
+                }
+
+                this.data.pillars[this.activePillarId].achievements.push(ach);
+                this.saveData();
+                this.renderModalContent();
+                lucide.createIcons();
+            },
+
+            toggleManualAch(id) {
+                const a = this.data.pillars[this.activePillarId].achievements.find(x => x.id === id);
+                if (a && a.type === 'manual') {
+                    a.completed = !a.completed;
+                    this.saveData();
+                    this.renderModalContent();
+                    lucide.createIcons();
+                }
+            },
+
+            deleteAchievement(id) {
+                this.data.pillars[this.activePillarId].achievements = this.data.pillars[this.activePillarId].achievements.filter(a => a.id !== id);
+                this.saveData();
+                this.renderModalContent();
+                lucide.createIcons();
+            },
+
+            // --- TAB 3: PROGRESS ---
+            renderProgress(container) {
+                container.innerHTML = `
+                    <h2 class="text-2xl font-bold mb-6 text-slate-800 dark:text-white">Alignment Matrix</h2>
+                    
+                    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm mb-8 flex justify-center items-center transition-colors duration-300">
+                        <div class="relative w-full max-w-[280px] aspect-square">
+                            <canvas id="radar-chart" class="w-full h-full"></canvas>
+                        </div>
+                    </div>
+                    <div class="space-y-4 pb-4">
+                        <h3 class="font-semibold text-slate-500 dark:text-slate-400 uppercase text-xs tracking-wider">Completion Ratios</h3>
+                        <div id="progress-bars" class="space-y-4"></div>
+                    </div>
+                `;
+
+                // Calculate accurate Alignment Scores (Goals + Achievements + Tasks)
+                const scores = PILLARS.map(p => {
+                    let totalWeight = 0;
+                    let earnedWeight = 0;
+
+                    const pGoals = this.data.pillars[p.id].goals || [];
+                    const pAchs = this.data.pillars[p.id].achievements || [];
+                    const pTasks = this.data.tasks.filter(t => t.pillar === p.id);
+
+                    // 1. Goals (Weight 1)
+                    totalWeight += pGoals.length;
+                    earnedWeight += pGoals.filter(g => g.completed).length;
+
+                    // 2. Achievements (Weight 1)
+                    totalWeight += pAchs.length;
+                    earnedWeight += pAchs.filter(a => a.completed).length;
+
+                    // 3. Tasks (Weight 1 max per task, earned by recent/consistent completions)
+                    pTasks.forEach(t => {
+                        totalWeight += 1;
+                        const comps = this.data.taskCompletions[t.id] ? this.data.taskCompletions[t.id].length : 0;
+                        // Max out a task's contribution at 7 completions (1 week streak proxy)
+                        earnedWeight += Math.min(comps / 7, 1);
+                    });
+
+                    if (totalWeight === 0) return 0;
+                    return Math.min(earnedWeight / totalWeight, 1);
+                });
+
+                let barHtml = '';
+                PILLARS.forEach((p, idx) => {
+                    const pct = Math.round(scores[idx] * 100);
+                    barHtml += `
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-slate-700 dark:text-slate-200 font-medium">${p.name}</span>
+                                <span class="text-slate-500 dark:text-slate-400">${pct}%</span>
+                            </div>
+                            <div class="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                <div class="h-full ${p.color.replace('bg-', 'bg-')} rounded-full" style="width: ${pct}%"></div>
+                            </div>
+                        </div>
+                    `;
+                });
+                document.getElementById('progress-bars').innerHTML = barHtml;
+
+                setTimeout(() => this.drawRadarChart('radar-chart', scores), 50);
+            },
+
+            drawRadarChart(canvasId, scores) {
+                const canvas = document.getElementById(canvasId);
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                const size = canvas.parentElement.clientWidth || 280;
+                const dpr = window.devicePixelRatio || 1;
+                canvas.width = size * dpr; canvas.height = size * dpr;
+                ctx.scale(dpr, dpr);
+
+                // Extra padding for labels
+                const cx = size / 2, cy = size / 2, radius = (size / 2) - 40, sides = 7;
+                const isDark = document.documentElement.classList.contains('dark');
+
+                const getPoint = (val, i) => {
+                    const angle = (Math.PI * 2 / sides) * i - Math.PI / 2;
+                    return { x: cx + radius * val * Math.cos(angle), y: cy + radius * val * Math.sin(angle) };
+                };
+
+                // Draw Web / Grid
+                ctx.lineWidth = 1;
+                for (let level = 1; level <= 4; level++) {
+                    const rLevel = level / 4;
+                    ctx.beginPath();
+                    for (let i = 0; i < sides; i++) {
+                        const p = getPoint(rLevel, i);
+                        i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
+                    }
+                    ctx.closePath();
+                    // Grid color based on theme
+                    ctx.strokeStyle = isDark ? `rgba(51, 65, 85, ${rLevel === 1 ? '1' : '0.4'})` : `rgba(203, 213, 225, ${rLevel === 1 ? '1' : '0.6'})`;
+                    ctx.stroke();
+                }
+
+                // Draw Spokes and Labels
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                for (let i = 0; i < sides; i++) {
+                    const pMax = getPoint(1, i);
+                    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(pMax.x, pMax.y);
+                    ctx.strokeStyle = isDark ? 'rgba(51, 65, 85, 0.4)' : 'rgba(203, 213, 225, 0.6)';
+                    ctx.stroke();
+
+                    const pLabel = getPoint(1.25, i); // Push out further to fit text
+
+                    // Main Pillar Label
+                    ctx.fillStyle = isDark ? '#94a3b8' : '#64748b';
+                    ctx.font = 'bold 10px Inter';
+                    ctx.fillText(PILLARS[i].name.substring(0, 3).toUpperCase(), pLabel.x, pLabel.y - 6);
+
+                    // Percentage Label
+                    const pct = Math.round(scores[i] * 100) + '%';
+                    ctx.font = '9px Inter';
+                    ctx.fillStyle = isDark ? '#64748b' : '#94a3b8';
+                    ctx.fillText(pct, pLabel.x, pLabel.y + 6);
+                }
+
+                // Draw Data Polygon
+                ctx.beginPath();
+                for (let i = 0; i < sides; i++) {
+                    const val = scores[i]; // Allows true zero
+                    const p = getPoint(val, i);
+                    i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
+                }
+                ctx.closePath();
+
+                // Create shaded gradient fill based on how much is done
+                const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+                gradient.addColorStop(0, 'rgba(16, 185, 129, 0.7)'); // Stronger green at the center
+                gradient.addColorStop(1, 'rgba(16, 185, 129, 0.1)'); // Fades outwards
+
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#34d399';
+                ctx.stroke();
+
+                // Draw Data Points (Dots on vertices)
+                for (let i = 0; i < sides; i++) {
+                    const val = scores[i];
+                    const p = getPoint(val, i);
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 4.5, 0, Math.PI * 2);
+                    ctx.fillStyle = '#10b981'; // Solid emerald dot
+                    ctx.fill();
+                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = isDark ? '#020617' : '#ffffff'; // Border matches background theme
+                    ctx.stroke();
+                }
+            },
+
+            // --- TAB 4: JOURNAL (DIGITAL DIARY) ---
+            renderJournal(container) {
+                // To maintain backward compatibility if user had multiple array items, we consolidate them into text
+                const entries = this.data.journal.filter(j => j.date === this.currentDate);
+                const content = entries.length > 0 ? entries.map(e => e.content).join('\n\n') : '';
+
+                container.innerHTML = `
+                    <div class="flex flex-col flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm min-h-0 transition-colors duration-300">
+                        
+                        <div class="p-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 flex justify-between items-center shrink-0">
+                            <button onclick="app.changeDateOffset(-1)" class="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg text-slate-500 transition-colors"><i data-lucide="chevron-left" class="w-5 h-5"></i></button>
+                            <h3 class="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                                <i data-lucide="book-open" class="w-5 h-5 text-emerald-500 dark:text-emerald-400"></i>
+                                ${this.currentDate}
+                            </h3>
+                            <button onclick="app.changeDateOffset(1)" class="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg text-slate-500 transition-colors"><i data-lucide="chevron-right" class="w-5 h-5"></i></button>
+                        </div>
+                        
+                        <div class="flex-1 flex flex-col min-h-0 relative">
+                            <textarea id="diary-textarea" oninput="app.autoSaveDiary(this.value)" class="flex-1 w-full h-full bg-transparent p-5 sm:p-6 text-sm text-slate-800 dark:text-slate-200 focus:outline-none resize-none hide-scrollbar placeholder-slate-400 dark:placeholder-slate-500 leading-relaxed" placeholder="Write your thoughts, ideas, or daily reflections here..."></textarea>
+                        </div>
+                        
+                        <div class="px-4 py-2 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 text-[10px] text-slate-400 dark:text-slate-500 text-right shrink-0" id="diary-save-status">
+                            All changes saved locally.
+                        </div>
+                    </div>
+                `;
+
+                document.getElementById('diary-textarea').value = content;
+            },
+
+            autoSaveDiary(val) {
+                // Clear any existing entries for this date to replace with a single text block
+                this.data.journal = this.data.journal.filter(j => j.date !== this.currentDate);
+
+                if (val.trim()) {
+                    this.data.journal.push({
+                        id: 'j-' + Date.now(),
+                        date: this.currentDate,
+                        type: 'text',
+                        content: val,
+                        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    });
+                }
+
+                this.saveData();
+
+                // Update save status text
+                const status = document.getElementById('diary-save-status');
+                if (status) {
+                    status.innerText = 'Saving...';
+                    clearTimeout(this.saveTimeout);
+                    this.saveTimeout = setTimeout(() => {
+                        status.innerText = 'All changes saved locally.';
+                    }, 800);
+                }
+            },
+
+            escapeHTML(str) {
+                return str ? str.replace(/[&<>'"]/g, t => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[t])) : '';
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', () => app.init());
+    </script>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+
+            window.addEventListener('load', async () => {
+
+                try {
+
+                    await navigator.serviceWorker.register('./sw.js');
+
+                    console.log("Service Worker Registered");
+
+                } catch (err) {
+
+                    console.error(err);
+
+                }
+
+            });
+
+        }
+
+        let deferredPrompt;
+
+        window.addEventListener("beforeinstallprompt", e => {
+
+            e.preventDefault();
+
+            deferredPrompt = e;
+
+            document.getElementById("install-btn").classList.remove("hidden");
+
+        });
+
+        document.getElementById("install-btn").onclick = async () => {
+
+            deferredPrompt.prompt();
+
+            await deferredPrompt.userChoice;
+
+            deferredPrompt = null;
+
+            document.getElementById("install-btn").classList.add("hidden");
+
+        };
+
+        window.addEventListener("appinstalled", () => {
+
+            console.log("ARISE Installed");
+
+        });
+
+        if ('serviceWorker' in navigator) {
+
+            window.addEventListener('load', () => {
+
+                navigator.serviceWorker.register('./sw.js');
+
+            });
+
+        }
+    </script>
+</body>
+
+</html>
