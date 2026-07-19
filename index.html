@@ -62,6 +62,10 @@
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
+        #achievements-modal {
+            transition: opacity 0.2s ease;
+        }
+
         .modal-open {
             transform: translateY(0%);
         }
@@ -118,6 +122,11 @@
 
         <!-- Right: Controls -->
         <div class="flex items-center space-x-2">
+            <button onclick="app.openAchievements()"
+                class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-emerald-500 dark:hover:text-emerald-400 transition shadow-sm"
+                title="Achievements">
+                <i data-lucide="trophy" class="w-4 h-4"></i>
+            </button>
             <button onclick="app.toggleTheme()"
                 class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-emerald-500 dark:hover:text-emerald-400 transition shadow-sm"
                 title="Toggle Theme">
@@ -226,6 +235,78 @@
                         <i data-lucide="alert-triangle" class="w-4 h-4"></i><span>Factory Reset</span>
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ACHIEVEMENTS OVERVIEW MODAL -->
+    <div id="achievements-modal"
+        class="fixed inset-0 bg-black/50 dark:bg-black/80 z-50 hidden flex items-center justify-center p-4 transition-opacity opacity-0 backdrop-blur-sm">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl w-full max-w-2xl h-[85vh] overflow-hidden shadow-2xl transform scale-95 transition-transform duration-200 flex flex-col"
+            id="achievements-box">
+            <div
+                class="p-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-950/50 shrink-0">
+                <h3 class="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                    <i data-lucide="trophy" class="w-5 h-5 text-emerald-500 dark:text-emerald-400"></i> Achievements
+                </h3>
+                <button onclick="app.closeAchievements()"
+                    class="text-slate-500 hover:text-slate-800 dark:hover:text-white p-1 transition"><i data-lucide="x"
+                        class="w-5 h-5"></i></button>
+            </div>
+
+            <div class="p-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
+                <div class="grid grid-cols-1 sm:grid-cols-[1.3fr_0.7fr_0.7fr] gap-3">
+                    <div class="rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-500 text-white p-4 shadow-lg">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <div class="text-[10px] uppercase tracking-[0.2em] text-white/80 font-semibold">
+                                    Achievement Score</div>
+                                <div id="achievements-score" class="mt-1 text-4xl font-bold leading-none">0%</div>
+                                <div id="achievements-score-detail" class="mt-2 text-sm text-white/90">0 of 0 completed
+                                </div>
+                            </div>
+                            <div class="h-11 w-11 rounded-2xl bg-white/15 flex items-center justify-center shrink-0">
+                                <i data-lucide="award" class="w-5 h-5"></i>
+                            </div>
+                        </div>
+                        <div class="mt-4 h-2 rounded-full bg-white/20 overflow-hidden">
+                            <div id="achievements-score-bar" class="h-full rounded-full bg-white" style="width: 0%">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div
+                        class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
+                        <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">In Progress
+                        </div>
+                        <div id="achievements-progress-count"
+                            class="mt-2 text-3xl font-bold text-slate-800 dark:text-white">0</div>
+                        <div class="mt-1 text-sm text-slate-500 dark:text-slate-400">Still active</div>
+                    </div>
+
+                    <div
+                        class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
+                        <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Completed
+                        </div>
+                        <div id="achievements-completed-count"
+                            class="mt-2 text-3xl font-bold text-slate-800 dark:text-white">0</div>
+                        <div class="mt-1 text-sm text-slate-500 dark:text-slate-400">Unlocked</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-4 pt-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
+                <div class="flex rounded-2xl bg-slate-100 dark:bg-slate-950 p-1">
+                    <button onclick="app.setAchievementsTab('in-progress')" id="atab-in-progress"
+                        class="flex-1 py-2.5 text-sm font-semibold rounded-xl border border-transparent text-slate-500 dark:text-slate-400 transition">In
+                        progress</button>
+                    <button onclick="app.setAchievementsTab('completed')" id="atab-completed"
+                        class="flex-1 py-2.5 text-sm font-semibold rounded-xl border border-transparent text-slate-500 dark:text-slate-400 transition">Completed</button>
+                </div>
+            </div>
+
+            <div id="achievements-modal-content"
+                class="flex-1 overflow-y-auto p-4 hide-scrollbar bg-slate-50 dark:bg-slate-950/50">
             </div>
         </div>
     </div>
@@ -360,6 +441,7 @@
             currentDate: '',
             activePillarId: null,
             activeModalTab: 'tasks',
+            activeAchievementsTab: 'in-progress',
             saveTimeout: null,
 
             async init() {
@@ -483,6 +565,167 @@
                 modal.classList.add('opacity-0');
                 box.classList.add('scale-95');
                 setTimeout(() => modal.classList.add('hidden'), 200);
+            },
+
+            openAchievements() {
+                const modal = document.getElementById('achievements-modal');
+                const box = document.getElementById('achievements-box');
+                modal.classList.remove('hidden');
+
+                requestAnimationFrame(() => {
+                    modal.classList.remove('opacity-0');
+                    box.classList.remove('scale-95');
+                });
+
+                this.setAchievementsTab('in-progress');
+            },
+
+            closeAchievements() {
+                const modal = document.getElementById('achievements-modal');
+                const box = document.getElementById('achievements-box');
+                modal.classList.add('opacity-0');
+                box.classList.add('scale-95');
+                setTimeout(() => modal.classList.add('hidden'), 200);
+            },
+
+            setAchievementsTab(tabId) {
+                this.activeAchievementsTab = tabId;
+
+                ['in-progress', 'completed'].forEach(t => {
+                    const el = document.getElementById(`atab-${t}`);
+                    if (!el) return;
+                    if (t === tabId) {
+                        el.classList.add('bg-white', 'dark:bg-slate-900', 'text-emerald-500', 'dark:text-emerald-400', 'shadow-sm');
+                        el.classList.remove('text-slate-500', 'dark:text-slate-400');
+                    } else {
+                        el.classList.remove('bg-white', 'dark:bg-slate-900', 'text-emerald-500', 'dark:text-emerald-400', 'shadow-sm');
+                        el.classList.add('text-slate-500', 'dark:text-slate-400');
+                    }
+                });
+
+                this.renderAchievementsOverview();
+                lucide.createIcons();
+            },
+
+            getAllAchievements() {
+                const items = [];
+
+                PILLARS.forEach(p => {
+                    const pillar = this.data.pillars[p.id] || { achievements: [] };
+                    (pillar.achievements || []).forEach(a => {
+                        const progress = this.getAchievementProgress(a);
+                        items.push({
+                            ...a,
+                            pillarId: p.id,
+                            pillarName: p.name,
+                            pillarText: p.text,
+                            completed: progress.completed,
+                            progressText: progress.progressText,
+                            progressValue: progress.progressValue
+                        });
+                    });
+                });
+
+                return items;
+            },
+
+            getAchievementProgress(achievement) {
+                if (achievement.type === 'streak' && achievement.taskId) {
+                    const target = Number.isFinite(achievement.target) && achievement.target > 0 ? achievement.target : 0;
+                    const currentTaskStreak = this.getTaskStreak(achievement.taskId, this.currentDate);
+                    const completed = target > 0 ? currentTaskStreak >= target : false;
+
+                    return {
+                        completed,
+                        progressText: `Streak Progress: ${currentTaskStreak} / ${target || 0}`,
+                        progressValue: target > 0 ? Math.min((currentTaskStreak / target) * 100, 100) : 0
+                    };
+                }
+
+                const completed = Boolean(achievement.completed);
+                return {
+                    completed,
+                    progressText: completed ? 'Completed' : 'Manual unlock',
+                    progressValue: completed ? 100 : 0
+                };
+            },
+
+            renderAchievementItem(item) {
+                const statusColor = item.completed ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900';
+                const statusIcon = item.completed ? 'check' : item.type === 'streak' ? 'trophy' : 'circle';
+                const statusIconWrap = item.completed ? 'bg-emerald-500 border-emerald-500 text-white dark:text-slate-950' : 'border-slate-300 dark:border-slate-600 text-slate-400 dark:text-slate-500';
+                const textColor = item.completed ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-200';
+                const metaColor = item.completed ? 'text-emerald-500 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400';
+
+                return `
+                    <div class="flex items-start justify-between rounded-lg border p-3 ${statusColor}">
+                        <div class="flex items-start space-x-3 flex-1 min-w-0">
+                            <div class="mt-0.5 w-5 h-5 rounded border flex items-center justify-center shrink-0 ${statusIconWrap}">
+                                ${item.completed ? '<i data-lucide="check" class="w-3.5 h-3.5 stroke-[3]"></i>' : `<i data-lucide="${statusIcon}" class="w-3.5 h-3.5"></i>`}
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex flex-wrap items-center gap-2 mb-1">
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${item.pillarText} bg-slate-100 dark:bg-slate-950/70">${item.pillarName}</span>
+                                    <span class="text-[10px] uppercase tracking-wider ${metaColor}">${item.type === 'streak' ? 'Milestone' : 'Manual'}</span>
+                                </div>
+                                <span class="text-sm font-medium ${textColor} block">${this.escapeHTML(item.text)}</span>
+                                <div class="text-[10px] mt-1 ${item.completed ? 'text-emerald-400' : 'text-slate-500'}">${this.escapeHTML(item.progressText)}</div>
+                                ${item.type === 'streak' && !item.completed ? `
+                                    <div class="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full mt-2 overflow-hidden">
+                                        <div class="h-full bg-emerald-500 rounded-full" style="width: ${item.progressValue}%"></div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            },
+
+            renderAchievementsOverview() {
+                const container = document.getElementById('achievements-modal-content');
+                if (!container) return;
+
+                const allAchievements = this.getAllAchievements();
+                const completedItems = allAchievements.filter(item => item.completed);
+                const inProgressItems = allAchievements.filter(item => !item.completed);
+                const activeItems = this.activeAchievementsTab === 'completed' ? completedItems : inProgressItems;
+                const total = allAchievements.length;
+                const completedCount = completedItems.length;
+                const progressCount = inProgressItems.length;
+                const score = total ? Math.round((completedCount / total) * 100) : 0;
+
+                const listTitle = this.activeAchievementsTab === 'completed' ? 'Completed achievements' : 'In progress achievements';
+
+                container.innerHTML = `
+                    <div class="space-y-4 pb-4">
+                        <div class="flex items-center justify-between gap-3">
+                            <h4 class="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">${listTitle}</h4>
+                            <div class="text-xs text-slate-500 dark:text-slate-400">${activeItems.length} items</div>
+                        </div>
+
+                        ${activeItems.length === 0 ? `
+                            <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 text-center text-sm text-slate-500 dark:text-slate-400 shadow-sm">
+                                ${this.activeAchievementsTab === 'completed' ? 'No achievements completed yet.' : 'No achievements are in progress.'}
+                            </div>
+                        ` : `
+                            <div class="space-y-2">
+                                ${activeItems.map(item => this.renderAchievementItem(item)).join('')}
+                            </div>
+                        `}
+                    </div>
+                `;
+
+                const scoreEl = document.getElementById('achievements-score');
+                const scoreDetailEl = document.getElementById('achievements-score-detail');
+                const scoreBarEl = document.getElementById('achievements-score-bar');
+                const progressCountEl = document.getElementById('achievements-progress-count');
+                const completedCountEl = document.getElementById('achievements-completed-count');
+
+                if (scoreEl) scoreEl.innerText = `${score}%`;
+                if (scoreDetailEl) scoreDetailEl.innerText = `${completedCount} of ${total} completed`;
+                if (scoreBarEl) scoreBarEl.style.width = `${score}%`;
+                if (progressCountEl) progressCountEl.innerText = `${progressCount}`;
+                if (completedCountEl) completedCountEl.innerText = `${completedCount}`;
             },
 
             saveProfileName(val) {

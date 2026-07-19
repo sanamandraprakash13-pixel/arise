@@ -1,4 +1,4 @@
-const CACHE = "arise-v1";
+const CACHE = "arise-v2";
 
 const FILES = [
     "./",
@@ -8,7 +8,7 @@ const FILES = [
 
 self.addEventListener("install", event => {
     event.waitUntil(
-        caches.open(CACHE).then(cache => cache.addAll(FILES))
+        caches.open(CACHE).then(cache => cache.addAll(FILES)).then(() => self.skipWaiting())
     );
 });
 
@@ -19,7 +19,7 @@ self.addEventListener("activate", event => {
                 keys.filter(k => k !== CACHE)
                     .map(k => caches.delete(k))
             )
-        )
+        ).then(() => self.clients.claim())
     );
 });
 
@@ -27,6 +27,14 @@ self.addEventListener("fetch", event => {
 
     if (event.request.method !== "GET")
         return;
+
+    if (event.request.mode === "navigate") {
+        event.respondWith(
+            fetch(event.request).catch(() => caches.match("./index.html"))
+        );
+
+        return;
+    }
 
     event.respondWith(
         caches.match(event.request)
