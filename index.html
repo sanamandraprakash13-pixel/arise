@@ -5,21 +5,10 @@
     <meta charset="UTF-8">
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="theme-color" content="#0f172a">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="manifest" href="manifest.json">
-
-    <link rel="apple-touch-icon" href="icons/icon-192.png">
-
-    <meta name="apple-mobile-web-app-title" content="ARISE">
-
-    <meta name="mobile-web-app-capable" content="yes">
     <title>ARISE</title>
 
-    <!-- Prevent Flash of Unstyled Content (Theme) -->
     <script>
-        if (localStorage.theme === 'light') {
+        if (window.matchMedia('(prefers-color-scheme: light)').matches) {
             document.documentElement.classList.remove('dark');
         } else {
             document.documentElement.classList.add('dark'); // Default to dark
@@ -218,22 +207,14 @@
                                 IndexedDB Data</span>
                         </button>
 
-                        <button id="install-btn"
-                            class="hidden w-full flex items-center justify-center space-x-2 p-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm transition">
-
-                            <i data-lucide="download"></i>
-                            <span>Install ARISE App</span>
-
-                        </button>
-
                     </div>
-                </div>
 
-                <div class="pt-2 border-t border-slate-200 dark:border-slate-800">
-                    <button onclick="app.factoryReset()"
-                        class="w-full flex items-center justify-center space-x-2 p-3 bg-rose-100 dark:bg-rose-500/10 hover:bg-rose-200 dark:hover:bg-rose-500/20 text-rose-600 dark:text-rose-500 border border-rose-200 dark:border-rose-500/20 rounded-xl text-sm transition font-medium">
-                        <i data-lucide="alert-triangle" class="w-4 h-4"></i><span>Factory Reset</span>
-                    </button>
+                    <div class="pt-2 border-t border-slate-200 dark:border-slate-800">
+                        <button onclick="app.factoryReset()"
+                            class="w-full flex items-center justify-center space-x-2 p-3 bg-rose-100 dark:bg-rose-500/10 hover:bg-rose-200 dark:hover:bg-rose-500/20 text-rose-600 dark:text-rose-500 border border-rose-200 dark:border-rose-500/20 rounded-xl text-sm transition font-medium">
+                            <i data-lucide="alert-triangle" class="w-4 h-4"></i><span>Factory Reset</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -241,7 +222,7 @@
 
     <!-- ACHIEVEMENTS OVERVIEW MODAL -->
     <div id="achievements-modal"
-        class="fixed inset-0 bg-black/50 dark:bg-black/80 z-50 hidden flex items-center justify-center p-4 transition-opacity opacity-0 backdrop-blur-sm">
+        class="fixed inset-0 bg-black/50 dark:bg-black/80 z-[60] hidden flex items-center justify-center p-4 transition-opacity opacity-0 backdrop-blur-sm">
         <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl w-full max-w-2xl h-[85vh] overflow-hidden shadow-2xl transform scale-95 transition-transform duration-200 flex flex-col"
             id="achievements-box">
             <div
@@ -262,7 +243,8 @@
                                 <div class="text-[10px] uppercase tracking-[0.2em] text-white/80 font-semibold">
                                     Achievement Score</div>
                                 <div id="achievements-score" class="mt-1 text-4xl font-bold leading-none">0%</div>
-                                <div id="achievements-score-detail" class="mt-2 text-sm text-white/90">0 of 0 completed
+                                <div id="achievements-score-detail" class="mt-2 text-sm text-white/90">0 of 0
+                                    completed
                                 </div>
                             </div>
                             <div class="h-11 w-11 rounded-2xl bg-white/15 flex items-center justify-center shrink-0">
@@ -277,7 +259,8 @@
 
                     <div
                         class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
-                        <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">In Progress
+                        <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">In
+                            Progress
                         </div>
                         <div id="achievements-progress-count"
                             class="mt-2 text-3xl font-bold text-slate-800 dark:text-white">0</div>
@@ -286,7 +269,8 @@
 
                     <div
                         class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
-                        <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Completed
+                        <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                            Completed
                         </div>
                         <div id="achievements-completed-count"
                             class="mt-2 text-3xl font-bold text-slate-800 dark:text-white">0</div>
@@ -534,11 +518,9 @@
                 const htmlClasses = document.documentElement.classList;
                 if (htmlClasses.contains('dark')) {
                     htmlClasses.remove('dark');
-                    localStorage.theme = 'light';
                     document.getElementById('theme-icon').setAttribute('data-lucide', 'moon');
                 } else {
                     htmlClasses.add('dark');
-                    localStorage.theme = 'dark';
                     document.getElementById('theme-icon').setAttribute('data-lucide', 'sun');
                 }
                 lucide.createIcons();
@@ -568,6 +550,8 @@
             },
 
             openAchievements() {
+                this.closeProfile();
+
                 const modal = document.getElementById('achievements-modal');
                 const box = document.getElementById('achievements-box');
                 modal.classList.remove('hidden');
@@ -1669,9 +1653,15 @@
 
                 try {
 
-                    await navigator.serviceWorker.register('./sw.js');
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    await Promise.all(registrations.map(registration => registration.unregister()));
 
-                    console.log("Service Worker Registered");
+                    if ('caches' in window) {
+                        const cacheKeys = await caches.keys();
+                        await Promise.all(cacheKeys.map(key => caches.delete(key)));
+                    }
+
+                    console.log("Offline support disabled");
 
                 } catch (err) {
 
@@ -1683,45 +1673,6 @@
 
         }
 
-        let deferredPrompt;
-
-        window.addEventListener("beforeinstallprompt", e => {
-
-            e.preventDefault();
-
-            deferredPrompt = e;
-
-            document.getElementById("install-btn").classList.remove("hidden");
-
-        });
-
-        document.getElementById("install-btn").onclick = async () => {
-
-            deferredPrompt.prompt();
-
-            await deferredPrompt.userChoice;
-
-            deferredPrompt = null;
-
-            document.getElementById("install-btn").classList.add("hidden");
-
-        };
-
-        window.addEventListener("appinstalled", () => {
-
-            console.log("ARISE Installed");
-
-        });
-
-        if ('serviceWorker' in navigator) {
-
-            window.addEventListener('load', () => {
-
-                navigator.serviceWorker.register('./sw.js');
-
-            });
-
-        }
     </script>
 </body>
 
