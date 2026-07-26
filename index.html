@@ -128,11 +128,6 @@
                 title="Achievements">
                 <i data-lucide="trophy" class="w-4 h-4"></i>
             </button>
-            <button onclick="app.toggleTheme()"
-                class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-emerald-500 dark:hover:text-emerald-400 transition shadow-sm"
-                title="Toggle Theme">
-                <i data-lucide="moon" id="theme-icon" class="w-4 h-4"></i>
-            </button>
             <button onclick="app.openProfile()"
                 class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-emerald-500 dark:hover:text-emerald-400 transition shadow-sm"
                 title="Profile & Settings">
@@ -192,6 +187,18 @@
                     <input type="text" id="profile-name" onchange="app.saveProfileName(this.value)"
                         class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-white focus:border-emerald-500 outline-none transition"
                         placeholder="Your Name">
+                </div>
+
+                <div>
+                    <label
+                        class="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold mb-2 block">Appearance</label>
+                    <button onclick="app.toggleTheme()"
+                        class="w-full flex items-center justify-between p-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-white rounded-xl text-sm transition"
+                        title="Toggle brightness" aria-label="Toggle brightness">
+                        <span class="flex items-center gap-2"><i data-lucide="moon" id="theme-icon"
+                                class="w-4 h-4 text-amber-500"></i><span>Brightness</span></span>
+                        <span id="theme-mode" class="text-xs text-slate-500 dark:text-slate-400">Light</span>
+                    </button>
                 </div>
 
                 <div>
@@ -486,9 +493,7 @@
                 await this.migrateData();
                 this.updateHeaderStats();
 
-                // Initialize Theme Icon
-                const isDark = document.documentElement.classList.contains('dark');
-                document.getElementById('theme-icon').setAttribute('data-lucide', isDark ? 'sun' : 'moon');
+                this.updateThemeControl();
 
                 this.switchTab('today');
             },
@@ -798,14 +803,19 @@
                 const htmlClasses = document.documentElement.classList;
                 if (htmlClasses.contains('dark')) {
                     htmlClasses.remove('dark');
-                    document.getElementById('theme-icon').setAttribute('data-lucide', 'moon');
                 } else {
                     htmlClasses.add('dark');
-                    document.getElementById('theme-icon').setAttribute('data-lucide', 'sun');
                 }
+                this.updateThemeControl();
                 lucide.createIcons();
                 // Re-render chart if on progress tab to match new colors
                 if (this.currentTab === 'progress') this.renderProgress(document.getElementById('main-content'));
+            },
+
+            updateThemeControl() {
+                const isDark = document.documentElement.classList.contains('dark');
+                document.getElementById('theme-icon').setAttribute('data-lucide', isDark ? 'sun' : 'moon');
+                document.getElementById('theme-mode').textContent = isDark ? 'Dark' : 'Light';
             },
 
             // --- PROFILE SETTINGS ---
