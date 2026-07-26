@@ -482,6 +482,10 @@
             activePillarId: null,
             activeModalTab: 'tasks',
             activeAchievementsTab: 'in-progress',
+            editingGoalId: null,
+            editingTaskId: null,
+            progressWeekOffset: 0,
+            progressMonthOffset: 0,
             saveTimeout: null,
 
             async init() {
@@ -1156,6 +1160,53 @@
                 return new Date(y, m - 1, d);
             },
 
+            dateToString(date) {
+                return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+            },
+
+            getWeekStart(date) {
+                const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+                start.setDate(start.getDate() - start.getDay());
+                return start;
+            },
+
+            getPeriodTaskStats(startDate, days = 7, pillarId = null) {
+                let scheduled = 0, completed = 0;
+                for (let i = 0; i < days; i++) {
+                    const d = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + i);
+                    const dateStr = this.dateToString(d);
+                    this.data.tasks.filter(t => (!pillarId || t.pillar === pillarId) && this.shouldShowTask(t, dateStr)).forEach(t => {
+                        scheduled++;
+                        if (this.isTaskCompleted(t.id, dateStr)) completed++;
+                    });
+                }
+                return { scheduled, completed, rate: scheduled ? Math.round((completed / scheduled) * 100) : 0 };
+            },
+
+            getMoodTrend(startDate, days = 7) {
+                const values = { '😫': 1, '😕': 2, '😐': 3, '🙂': 4, '😌': 4, '🤩': 5, '🔥': 5 };
+                const entries = [];
+                for (let i = 0; i < days; i++) {
+                    const d = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + i);
+                    const mood = this.data.mood[this.dateToString(d)]?.emoji;
+                    entries.push(values[mood] || null);
+                }
+                const recorded = entries.filter(value => value !== null);
+                if (!recorded.length) return { entries, label: 'No mood check-ins', average: null };
+                const delta = recorded[recorded.length - 1] - recorded[0];
+                const average = recorded.reduce((sum, value) => sum + value, 0) / recorded.length;
+                const label = delta > 0 ? 'Improving' : delta < 0 ? 'Declining' : 'Steady';
+                return { entries, label, average };
+            },
+
+            getMoodTrendChart(startDate) {
+                const trend = this.getMoodTrend(startDate);
+                const labels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+                const points = trend.entries.map((value, index) => value === null ? '' : `${index * (100 / 6)},${100 - ((value - 1) / 4) * 82 - 9}`).filter(Boolean).join(' ');
+                const dots = trend.entries.map((value, index) => value === null ? '' : `<circle cx="${index * (100 / 6)}" cy="${100 - ((value - 1) / 4) * 82 - 9}" r="3.5" class="fill-emerald-500 stroke-white dark:stroke-slate-900" stroke-width="2" />`).join('');
+                return `<div class="mt-2"><svg viewBox="-4 -4 108 108" class="w-full h-16 overflow-visible" preserveAspectRatio="none" aria-label="Mood trend graph"><path d="M0 9H100 M0 50H100 M0 91H100" class="stroke-slate-200 dark:stroke-slate-700" stroke-width="1" /><polyline points="${points}" fill="none" class="stroke-emerald-500" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />${dots}</svg><div class="grid grid-cols-7 text-center text-[9px] text-slate-400">${labels.map(label => `<span>${label}</span>`).join('')}</div><div class="mt-1 text-[11px] text-slate-500">${trend.average === null ? trend.label : `${trend.label} · ${trend.average.toFixed(1)}/5`}</div></div>`;
+            },
+
             shouldShowTask(task, dateStr) {
                 const targetDate = this.parseDateString(dateStr);
                 const startDate = this.parseDateString(task.startDate);
@@ -1463,10 +1514,19 @@
                 `;
                 if (goals.length === 0) html += `<div class="text-center py-6 text-sm text-slate-500">No goals set yet.</div>`;
                 goals.forEach(g => {
+                    if (this.editingGoalId === g.id) {
+                        html += `
+                            <form onsubmit="app.updateGoal(event, '${g.id}')" class="flex gap-2 items-center bg-white dark:bg-slate-900 p-3 rounded-lg border border-emerald-400 dark:border-emerald-600">
+                                <input id="edit-goal-${g.id}" type="text" required value="${this.escapeHTML(g.text)}" class="flex-1 min-w-0 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-sm text-slate-800 dark:text-white">
+                                <button type="submit" title="Save goal" class="text-emerald-600 dark:text-emerald-400"><i data-lucide="check" class="w-4 h-4"></i></button>
+                                <button type="button" onclick="app.cancelGoalEdit()" title="Cancel" class="text-slate-500"><i data-lucide="x" class="w-4 h-4"></i></button>
+                            </form>`;
+                        return;
+                    }
                     html += `
                         <div class="flex justify-between items-center bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
                             <span class="text-sm text-slate-800 dark:text-slate-200">${this.escapeHTML(g.text)}</span>
-                            <button onclick="app.deleteGoal('${g.id}')" class="text-slate-500 hover:text-rose-500 dark:text-slate-600 dark:hover:text-rose-400"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                            <div class="flex gap-3"><button onclick="app.startGoalEdit('${g.id}')" title="Edit goal" class="text-slate-500 hover:text-emerald-500"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="app.deleteGoal('${g.id}')" title="Delete goal" class="text-slate-500 hover:text-rose-500 dark:text-slate-600 dark:hover:text-rose-400"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>
                         </div>
                     `;
                 });
@@ -1489,6 +1549,18 @@
                 this.saveData();
                 this.renderModalContent();
                 lucide.createIcons();
+            },
+
+            startGoalEdit(id) { this.editingGoalId = id; this.renderModalContent(); lucide.createIcons(); },
+            cancelGoalEdit() { this.editingGoalId = null; this.renderModalContent(); lucide.createIcons(); },
+            updateGoal(e, id) {
+                e.preventDefault();
+                const value = document.getElementById(`edit-goal-${id}`).value.trim();
+                if (!value) return;
+                const goal = this.data.pillars[this.activePillarId].goals.find(g => g.id === id);
+                if (goal) goal.text = value;
+                this.editingGoalId = null;
+                this.saveData(); this.renderModalContent(); lucide.createIcons();
             },
 
             renderTasksTab(container, tasks, goals) {
@@ -1531,13 +1603,23 @@
 
                 if (tasks.length === 0) html += `<div class="text-center py-4 text-xs text-slate-500">No tasks configured.</div>`;
                 tasks.forEach(t => {
+                    if (this.editingTaskId === t.id) {
+                        html += `
+                            <form onsubmit="app.updateTask(event, '${t.id}')" class="space-y-2 bg-white dark:bg-slate-900 p-3 rounded-lg border border-emerald-400 dark:border-emerald-600">
+                                <input id="edit-task-text-${t.id}" type="text" required value="${this.escapeHTML(t.text)}" class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-sm text-slate-800 dark:text-white">
+                                <div class="flex gap-2"><select id="edit-task-goal-${t.id}" class="flex-1 min-w-0 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-sm text-slate-700 dark:text-slate-300">${goalOpts.replace(`value=\"${t.goalId}\"`, `value=\"${t.goalId}\" selected`)}</select><select id="edit-task-freq-${t.id}" class="flex-1 min-w-0 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-sm text-slate-700 dark:text-slate-300">${['once', 'daily', 'weekly', 'biweekly', 'monthly', 'custom'].map(f => `<option value="${f}" ${t.frequency === f ? 'selected' : ''}>${f}</option>`).join('')}</select></div>
+                                <div class="flex justify-between text-[10px] text-slate-500">${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, idx) => `<label class="flex items-center gap-1"><input type="checkbox" value="${idx}" class="edit-custom-day-${t.id}" ${(t.customDays || []).includes(idx) ? 'checked' : ''}>${day}</label>`).join('')}</div>
+                                <div class="flex justify-end gap-3"><button type="submit" class="text-sm text-emerald-600 dark:text-emerald-400">Save</button><button type="button" onclick="app.cancelTaskEdit()" class="text-sm text-slate-500">Cancel</button></div>
+                            </form>`;
+                        return;
+                    }
                     html += `
                         <div class="flex justify-between items-center bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
                             <div>
                                 <span class="text-sm text-slate-800 dark:text-slate-200 block">${this.escapeHTML(t.text)}</span>
                                 <span class="text-[10px] text-emerald-500 dark:text-emerald-400 uppercase tracking-wider">${t.frequency}</span>
                             </div>
-                            <button onclick="app.deleteTask('${t.id}')" class="text-slate-500 hover:text-rose-500 dark:text-slate-600 dark:hover:text-rose-400"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                            <div class="flex gap-3"><button onclick="app.startTaskEdit('${t.id}')" title="Edit task" class="text-slate-500 hover:text-emerald-500"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="app.deleteTask('${t.id}')" title="Delete task" class="text-slate-500 hover:text-rose-500 dark:text-slate-600 dark:hover:text-rose-400"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>
                         </div>
                     `;
                 });
@@ -1585,6 +1667,25 @@
                 this.saveData();
                 this.renderModalContent();
                 lucide.createIcons();
+            },
+
+            startTaskEdit(id) { this.editingTaskId = id; this.renderModalContent(); lucide.createIcons(); },
+            cancelTaskEdit() { this.editingTaskId = null; this.renderModalContent(); lucide.createIcons(); },
+            updateTask(e, id) {
+                e.preventDefault();
+                const task = this.data.tasks.find(t => t.id === id);
+                if (!task) return;
+                const text = document.getElementById(`edit-task-text-${id}`).value.trim();
+                if (!text) return;
+                task.text = text;
+                task.goalId = document.getElementById(`edit-task-goal-${id}`).value || null;
+                task.frequency = document.getElementById(`edit-task-freq-${id}`).value;
+                const customDays = Array.from(document.querySelectorAll(`.edit-custom-day-${id}:checked`)).map(input => parseInt(input.value));
+                if (task.frequency === 'custom' && !customDays.length) return alert('Select at least one custom day.');
+                task.customDays = customDays;
+                this.editingTaskId = null;
+                this.saveData(); this.renderModalContent(); lucide.createIcons();
+                if (this.currentTab === 'today') this.renderToday(document.getElementById('main-content'));
             },
 
             renderAchievementsTab(container, achievements) {
@@ -1707,6 +1808,8 @@
                         <h3 class="font-semibold text-slate-500 dark:text-slate-400 uppercase text-xs tracking-wider">Completion Ratios</h3>
                         <div id="progress-bars" class="space-y-4"></div>
                     </div>
+                    <div id="weekly-review" class="mt-8"></div>
+                    <div id="completion-calendar" class="mt-8 pb-8"></div>
                 `;
 
                 // Calculate accurate Alignment Scores (Goals + Achievements + Tasks)
@@ -1755,7 +1858,65 @@
                 });
                 document.getElementById('progress-bars').innerHTML = barHtml;
 
+                this.renderWeeklyReview();
+                this.renderCompletionCalendar();
+
                 setTimeout(() => this.drawRadarChart('radar-chart', scores), 50);
+            },
+
+            changeProgressWeek(offset) {
+                this.progressWeekOffset += offset;
+                this.renderWeeklyReview();
+                lucide.createIcons();
+            },
+
+            renderWeeklyReview() {
+                const container = document.getElementById('weekly-review');
+                if (!container) return;
+                const base = this.getWeekStart(this.parseDateString(this.currentDate));
+                base.setDate(base.getDate() + (this.progressWeekOffset * 7));
+                const end = new Date(base.getFullYear(), base.getMonth(), base.getDate() + 6);
+                const stats = this.getPeriodTaskStats(base);
+                const pillarStats = PILLARS.map(p => ({ pillar: p, ...this.getPeriodTaskStats(base, 7, p.id) }));
+                const strongest = pillarStats.filter(item => item.scheduled > 0).sort((a, b) => b.rate - a.rate || b.completed - a.completed)[0];
+                const range = `${base.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+                container.innerHTML = `
+                    <div class="flex items-center justify-between mb-3"><div><h3 class="font-bold text-slate-800 dark:text-white">Weekly review</h3><p class="text-xs text-slate-500 dark:text-slate-400">Sunday–Saturday · ${range}</p></div><div class="flex gap-1"><button onclick="app.changeProgressWeek(-1)" title="Previous week" class="p-2 rounded-lg text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50"><i data-lucide="chevron-left" class="w-4 h-4"></i></button><button onclick="app.changeProgressWeek(1)" title="Next week" class="p-2 rounded-lg text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50"><i data-lucide="chevron-right" class="w-4 h-4"></i></button></div></div>
+                    <div class="grid grid-cols-3 gap-3">
+                        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3"><div class="text-[10px] uppercase tracking-wider text-slate-500">Completion rate</div><div class="mt-1 text-lg font-bold text-emerald-600 dark:text-emerald-400">${stats.rate}%</div><div class="text-[11px] text-slate-500">${stats.completed}/${stats.scheduled || 0} tasks</div></div>
+                        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3"><div class="text-[10px] uppercase tracking-wider text-slate-500">Mood trend</div>${this.getMoodTrendChart(base)}</div>
+                        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3"><div class="text-[10px] uppercase tracking-wider text-slate-500">Strongest pillar</div><div class="mt-1 text-sm font-bold text-slate-800 dark:text-white">${strongest ? strongest.pillar.name : 'No task data'}</div><div class="text-[11px] text-slate-500">${strongest ? `${strongest.rate}% completed` : 'Add scheduled tasks'}</div></div>
+                    </div>`;
+                lucide.createIcons();
+            },
+
+            changeProgressMonth(offset) {
+                this.progressMonthOffset += offset;
+                this.renderCompletionCalendar();
+                lucide.createIcons();
+            },
+
+            renderCompletionCalendar() {
+                const container = document.getElementById('completion-calendar');
+                if (!container) return;
+                const selected = this.parseDateString(this.currentDate);
+                const month = new Date(selected.getFullYear(), selected.getMonth() + this.progressMonthOffset, 1);
+                const firstGridDay = new Date(month.getFullYear(), month.getMonth(), 1 - month.getDay());
+                const today = this.dateToString(new Date());
+                let cells = '';
+                for (let i = 0; i < 42; i++) {
+                    const day = new Date(firstGridDay.getFullYear(), firstGridDay.getMonth(), firstGridDay.getDate() + i);
+                    const inMonth = day.getMonth() === month.getMonth();
+                    const dateStr = this.dateToString(day);
+                    const stats = this.getPeriodTaskStats(day, 1);
+                    const intensity = stats.scheduled ? Math.max(10, stats.rate) : 0;
+                    const bg = intensity ? `background-color: rgba(16, 185, 129, ${0.12 + (intensity / 100) * 0.78})` : '';
+                    cells += `<div title="${dateStr}: ${stats.completed}/${stats.scheduled} tasks (${stats.rate}%)" style="${bg}" class="aspect-square rounded-lg border ${inMonth ? 'border-slate-200 dark:border-slate-700' : 'border-transparent opacity-35'} ${dateStr === today ? 'ring-2 ring-emerald-500' : ''} p-1 flex flex-col justify-between"><span class="text-[10px] ${intensity > 60 ? 'text-white font-bold' : 'text-slate-500 dark:text-slate-400'}">${day.getDate()}</span>${inMonth && stats.scheduled ? `<span class="text-[9px] text-right ${intensity > 60 ? 'text-white' : 'text-slate-600 dark:text-slate-300'}">${stats.completed}/${stats.scheduled}</span>` : ''}</div>`;
+                }
+                container.innerHTML = `
+                    <div class="flex items-center justify-between mb-3"><div><h3 class="font-bold text-slate-800 dark:text-white">Monthly completion heat map</h3><p class="text-xs text-slate-500 dark:text-slate-400">Each day shows completed scheduled tasks</p></div><div class="flex gap-1"><button onclick="app.changeProgressMonth(-1)" title="Previous month" class="p-2 rounded-lg text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50"><i data-lucide="chevron-left" class="w-4 h-4"></i></button><button onclick="app.changeProgressMonth(1)" title="Next month" class="p-2 rounded-lg text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50"><i data-lucide="chevron-right" class="w-4 h-4"></i></button></div></div>
+                    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3"><div class="text-center text-sm font-semibold text-slate-800 dark:text-white mb-3">${month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</div><div class="grid grid-cols-7 gap-1 mb-1">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => `<div class="text-center text-[10px] text-slate-500">${d}</div>`).join('')}</div><div class="grid grid-cols-7 gap-1">${cells}</div><div class="mt-3 text-[10px] text-slate-500">Cells show done/scheduled. Light = lower completion · darker = higher completion.</div></div>`;
+                lucide.createIcons();
             },
 
             drawRadarChart(canvasId, scores) {
