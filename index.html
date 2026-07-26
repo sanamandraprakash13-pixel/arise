@@ -98,9 +98,9 @@
 
     <!-- TOP HEADER -->
     <header
-        class="fixed top-0 w-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 h-16 pt-safe z-40 flex items-center justify-between px-4 transition-colors duration-300">
+        class="fixed top-0 w-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 h-16 pt-safe z-40 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center px-2 sm:flex sm:justify-between sm:px-4 transition-colors duration-300">
         <!-- Left: Stats -->
-        <div class="flex items-center space-x-4 text-sm font-medium">
+        <div class="flex items-center space-x-1 sm:space-x-4 text-sm font-medium">
             <button type="button" onclick="app.openStreakInsights()"
                 class="flex items-center space-x-1 text-orange-500 dark:text-orange-400 hover:bg-orange-500/10 dark:hover:bg-orange-400/10 rounded-xl px-2 py-1 transition"
                 title="Active Days Streak" aria-label="Open streak insights">
@@ -116,13 +116,13 @@
         </div>
 
         <!-- Center: Date -->
-        <div class="absolute left-1/2 transform -translate-x-1/2">
+        <div class="min-w-0 justify-self-center sm:absolute sm:left-1/2 sm:transform sm:-translate-x-1/2">
             <input type="date" id="date-picker" onchange="app.changeDate(this.value)"
-                class="bg-slate-100 dark:bg-slate-800/80 text-slate-800 dark:text-white border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1 text-sm font-semibold outline-none focus:border-emerald-500 transition shadow-sm cursor-pointer">
+                class="w-[8.25rem] max-w-full bg-slate-100 dark:bg-slate-800/80 text-slate-800 dark:text-white border border-slate-300 dark:border-slate-700 rounded-lg px-1.5 sm:px-2 py-1 text-sm font-semibold outline-none focus:border-emerald-500 transition shadow-sm cursor-pointer">
         </div>
 
         <!-- Right: Controls -->
-        <div class="flex items-center space-x-2">
+        <div class="flex items-center space-x-1 sm:space-x-2">
             <button onclick="app.openAchievements()"
                 class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-emerald-500 dark:hover:text-emerald-400 transition shadow-sm"
                 title="Achievements">
