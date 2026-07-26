@@ -55,6 +55,15 @@
             transition: opacity 0.2s ease;
         }
 
+        #streak-insights-modal,
+        #task-insights-modal {
+            transition: opacity 0.2s ease;
+        }
+
+        .insights-box {
+            transition: transform 0.2s ease;
+        }
+
         .modal-open {
             transform: translateY(0%);
         }
@@ -92,15 +101,18 @@
         class="fixed top-0 w-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 h-16 pt-safe z-40 flex items-center justify-between px-4 transition-colors duration-300">
         <!-- Left: Stats -->
         <div class="flex items-center space-x-4 text-sm font-medium">
-            <div class="flex items-center space-x-1 text-orange-500 dark:text-orange-400" title="Active Days Streak">
+            <button type="button" onclick="app.openStreakInsights()"
+                class="flex items-center space-x-1 text-orange-500 dark:text-orange-400 hover:bg-orange-500/10 dark:hover:bg-orange-400/10 rounded-xl px-2 py-1 transition"
+                title="Active Days Streak" aria-label="Open streak insights">
                 <i data-lucide="flame" class="w-5 h-5"></i>
                 <span id="header-streak" class="text-slate-800 dark:text-slate-200">0</span>
-            </div>
-            <div class="flex items-center space-x-1 text-emerald-500 dark:text-emerald-400"
-                title="Tasks Completed Today">
+            </button>
+            <button type="button" onclick="app.openTaskInsights()"
+                class="flex items-center space-x-1 text-emerald-500 dark:text-emerald-400 hover:bg-emerald-500/10 dark:hover:bg-emerald-400/10 rounded-xl px-2 py-1 transition"
+                title="Tasks Completed Today" aria-label="Open task completion insights">
                 <i data-lucide="check-circle-2" class="w-5 h-5"></i>
                 <span id="header-tasks" class="text-slate-800 dark:text-slate-200">0</span>
-            </div>
+            </button>
         </div>
 
         <!-- Center: Date -->
@@ -327,6 +339,43 @@
         </div>
     </div>
 
+    <!-- STREAK INSIGHTS MODAL -->
+    <div id="streak-insights-modal"
+        class="fixed inset-0 bg-black/50 dark:bg-black/80 z-[70] hidden flex items-center justify-center p-4 transition-opacity opacity-0 backdrop-blur-sm">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl transform scale-95 insights-box transition-transform duration-200"
+            id="streak-insights-box">
+            <div
+                class="p-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-950/50">
+                <h3 class="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                    <i data-lucide="flame" class="w-5 h-5 text-orange-500 dark:text-orange-400"></i> Streak Insights
+                </h3>
+                <button type="button" onclick="app.closeStreakInsights()"
+                    class="text-slate-500 hover:text-slate-800 dark:hover:text-white p-1 transition"><i data-lucide="x"
+                        class="w-5 h-5"></i></button>
+            </div>
+            <div id="streak-insights-content" class="p-5 space-y-4"></div>
+        </div>
+    </div>
+
+    <!-- TASK INSIGHTS MODAL -->
+    <div id="task-insights-modal"
+        class="fixed inset-0 bg-black/50 dark:bg-black/80 z-[70] hidden flex items-center justify-center p-4 transition-opacity opacity-0 backdrop-blur-sm">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl transform scale-95 insights-box transition-transform duration-200"
+            id="task-insights-box">
+            <div
+                class="p-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-950/50">
+                <h3 class="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                    <i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-500 dark:text-emerald-400"></i> Task
+                    Completion Insights
+                </h3>
+                <button type="button" onclick="app.closeTaskInsights()"
+                    class="text-slate-500 hover:text-slate-800 dark:hover:text-white p-1 transition"><i data-lucide="x"
+                        class="w-5 h-5"></i></button>
+            </div>
+            <div id="task-insights-content" class="p-5 space-y-4"></div>
+        </div>
+    </div>
+
     <script>
         const PILLARS = [
             { id: 'health', name: 'Health', icon: 'heart', color: 'bg-rose-500', text: 'text-rose-500 dark:text-rose-400' },
@@ -442,6 +491,237 @@
                 document.getElementById('theme-icon').setAttribute('data-lucide', isDark ? 'sun' : 'moon');
 
                 this.switchTab('today');
+            },
+
+            formatDisplayDate(dateStr) {
+                const date = this.parseDateString(dateStr);
+                return date.toLocaleDateString(undefined, {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                });
+            },
+
+            getActivityDatesSet() {
+                const activeDatesSet = new Set();
+                Object.values(this.data.taskCompletions).forEach(dates => dates.forEach(d => activeDatesSet.add(d)));
+                return activeDatesSet;
+            },
+
+            getGlobalActivityStreak(referenceDateStr = this.currentDate) {
+                const activeDatesSet = this.getActivityDatesSet();
+                if (activeDatesSet.size === 0) return 0;
+
+                let streak = 0;
+                let checkDate = this.parseDateString(referenceDateStr);
+                const checkDateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+
+                if (!activeDatesSet.has(checkDateStr)) {
+                    checkDate.setDate(checkDate.getDate() - 1);
+                }
+
+                for (let i = 0; i < 1000; i++) {
+                    const dStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+                    if (activeDatesSet.has(dStr)) {
+                        streak++;
+                        checkDate.setDate(checkDate.getDate() - 1);
+                    } else {
+                        break;
+                    }
+                }
+
+                return streak;
+            },
+
+            getTaskCompletionStats(referenceDateStr = this.currentDate) {
+                const visibleTasks = this.data.tasks.filter(t => this.shouldShowTask(t, referenceDateStr));
+                const completedToday = visibleTasks.filter(t => this.isTaskCompleted(t.id, referenceDateStr)).length;
+                const totalCompletions = Object.values(this.data.taskCompletions).reduce((sum, dates) => sum + dates.length, 0);
+                const tasksWithCompletions = Object.values(this.data.taskCompletions).filter(dates => dates.length > 0).length;
+
+                return {
+                    visibleTasks,
+                    completedToday,
+                    pendingToday: Math.max(visibleTasks.length - completedToday, 0),
+                    totalCompletions,
+                    tasksWithCompletions
+                };
+            },
+
+            getDailyPerformanceInsight(completedToday, totalVisibleTasks) {
+                const score = totalVisibleTasks > 0 ? Math.round((completedToday / totalVisibleTasks) * 100) : 0;
+
+                if (score >= 100) {
+                    return { score, label: '🌞 Sunshine Day', meaning: 'Perfectly intentional day.' };
+                }
+                if (score >= 85) {
+                    return { score, label: '⭐ Excellent', meaning: 'Outstanding consistency.' };
+                }
+                if (score >= 69) {
+                    return { score, label: '💪 Great', meaning: 'Strong progress.' };
+                }
+                if (score >= 54) {
+                    return { score, label: '👍 Good', meaning: 'Productive day.' };
+                }
+                if (score >= 38) {
+                    return { score, label: '⚠️ Recovery Needed', meaning: 'Needs improvement.' };
+                }
+                return { score, label: '🔄 Reset Tomorrow', meaning: 'Fresh start tomorrow.' };
+            },
+
+            getStreakMilestone(streak) {
+                const milestones = [
+                    { days: 365, badge: '👑 Sunshine Master' },
+                    { days: 180, badge: '🏔 Half-Year Legend' },
+                    { days: 100, badge: '💎 Century Club' },
+                    { days: 75, badge: '🚀 Momentum Master' },
+                    { days: 50, badge: '⭐ Consistency Star' },
+                    { days: 30, badge: '🌞 Monthly Champion' },
+                    { days: 21, badge: '🌿 Habit Builder' },
+                    { days: 14, badge: '💪 Two Week Warrior' },
+                    { days: 7, badge: '🔥 One Week Strong' },
+                    { days: 3, badge: '🌱 Getting Started' }
+                ];
+
+                const milestone = milestones.find(item => streak >= item.days);
+                return milestone || { days: 0, badge: 'Build your first streak', label: 'No milestone yet' };
+            },
+
+            getMilestoneText(streak, completedToday, totalVisibleTasks) {
+                const performance = this.getDailyPerformanceInsight(completedToday, totalVisibleTasks);
+                const milestone = this.getStreakMilestone(streak);
+
+                return {
+                    performanceText: `${completedToday}/${totalVisibleTasks || 0} tasks completed (${performance.score}%) - ${performance.label} • ${performance.meaning}`,
+                    streakText: `${streak} day${streak === 1 ? '' : 's'} - ${milestone.badge}`
+                };
+            },
+
+            renderStreakInsights() {
+                const content = document.getElementById('streak-insights-content');
+                if (!content) return;
+
+                const activeDatesSet = this.getActivityDatesSet();
+                const streak = this.getGlobalActivityStreak(this.currentDate);
+                const sortedActivityDates = [...activeDatesSet].sort();
+                const latestActivityDate = sortedActivityDates.length > 0 ? sortedActivityDates[sortedActivityDates.length - 1] : null;
+                const latestActivityLabel = latestActivityDate ? this.formatDisplayDate(latestActivityDate) : 'No activity logged yet';
+                const stats = this.getTaskCompletionStats(this.currentDate);
+                const milestoneText = this.getMilestoneText(streak, stats.completedToday, stats.visibleTasks.length);
+
+                content.innerHTML = `
+                    <div class="rounded-3xl bg-gradient-to-br from-orange-500 to-rose-500 text-white p-5 shadow-lg">
+                        <div class="text-[10px] uppercase tracking-[0.22em] text-white/80 font-semibold">Current streak</div>
+                    <!--    <div class="mt-2 text-5xl font-bold leading-none">${streak}</div>  -->
+                        <div class="mt-2 text-4xl sm:text-5xl font-bold leading-tight">${milestoneText.streakText}</div>
+                        <!-- <div class="mt-3 text-sm text-white/90">Consecutive active days ending on the selected date.</div>  
+                        <p class="text-sm text-slate-700 dark:text-slate-200 leading-6"><span class="font-semibold">Consistency Streak:</span> ${milestoneText.streakText}</p>  -->
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-4">
+                            <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Tracked activity days</div>
+                            <div class="mt-2 text-3xl font-bold text-slate-800 dark:text-white">${activeDatesSet.size}</div>
+                            <div class="mt-1 text-sm text-slate-500 dark:text-slate-400">Unique days with at least one completion.</div>
+                        </div>
+                        <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-4">
+                            <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Latest activity</div>
+                            <div class="mt-2 text-lg font-semibold text-slate-800 dark:text-white">${latestActivityLabel}</div>
+                            <div class="mt-1 text-sm text-slate-500 dark:text-slate-400">Most recent logged day in your history.</div>
+                        </div>
+                    </div>
+                        <div class="rounded-2xl border border-orange-200 dark:border-orange-500/20 bg-orange-50 dark:bg-orange-500/10 p-4 space-y-2">
+                            <div class="text-xs font-semibold uppercase tracking-wider text-orange-600 dark:text-orange-300">Milestone Insight</div>
+                        <!--    <p class="text-sm text-slate-700 dark:text-slate-200 leading-6"><span class="font-semibold">Daily Performance:</span> ${milestoneText.performanceText}</p>  -->
+                            <p class="text-sm text-slate-700 dark:text-slate-200 leading-6"><span class="font-semibold">Consistency Streak:</span> ${milestoneText.streakText}</p>
+                        </div>
+                    <!--    <div class="rounded-2xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 p-4 space-y-2">
+                            <div class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">How this streak is counted</div>
+                            <p class="text-sm text-slate-600 dark:text-slate-300 leading-6">If today has no activity yet, the streak is anchored to the latest active day before it. A single inactive day breaks the chain.</p>
+                    </div> -->
+                `;
+                lucide.createIcons();
+            },
+
+            renderTaskInsights() {
+                const content = document.getElementById('task-insights-content');
+                if (!content) return;
+
+                const stats = this.getTaskCompletionStats(this.currentDate);
+                const performance = this.getDailyPerformanceInsight(stats.completedToday, stats.visibleTasks.length);
+                const milestoneText = this.getMilestoneText(this.getGlobalActivityStreak(this.currentDate), stats.completedToday, stats.visibleTasks.length);
+
+                content.innerHTML = `
+                    <div class="rounded-3xl bg-gradient-to-br from-emerald-500 to-cyan-500 text-white p-5 shadow-lg">
+                        <div class="text-[10px] uppercase tracking-[0.22em] text-white/80 font-semibold">Daily Performance</div>
+                        <div class="mt-2 text-4xl sm:text-5xl font-bold leading-tight">${performance.label}</div>
+                        <div class="mt-3 text-sm text-white/90">${stats.completedToday} / ${stats.visibleTasks.length} tasks completed today (${performance.score}%).</div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-4">
+                            <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Completed today</div>
+                            <div class="mt-2 text-3xl font-bold text-slate-800 dark:text-white">${stats.completedToday}</div>
+                            <div class="mt-1 text-sm text-slate-500 dark:text-slate-400">${stats.pendingToday} tasks still open for the selected date.</div>
+                        </div>
+                        <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-4">
+                            <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">All-time completions</div>
+                            <div class="mt-2 text-3xl font-bold text-slate-800 dark:text-white">${stats.totalCompletions}</div>
+                            <div class="mt-1 text-sm text-slate-500 dark:text-slate-400">Across ${stats.tasksWithCompletions} tasks that have been completed before.</div>
+                        </div>
+                    </div>
+                    <div class="rounded-2xl border border-emerald-200 dark:border-emerald-500/20 bg-emerald-50 dark:bg-emerald-500/10 p-4 space-y-2">
+                        <div class="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-300">Milestone Insight</div>
+                        <p class="text-sm text-slate-700 dark:text-slate-200 leading-6"><span class="font-semibold">Daily Performance:</span> ${stats.completedToday}/${stats.visibleTasks.length || 0} tasks completed (${performance.score}%) - ${performance.label} • ${performance.meaning}</p>
+                        <p class="text-sm text-slate-700 dark:text-slate-200 leading-6"><span class="font-semibold">Consistency Streak:</span> ${milestoneText.streakText}</p>
+                    </div>
+                <!--    <div class="rounded-2xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 p-4 space-y-2">
+                        <div class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">What is included</div>
+                        <p class="text-sm text-slate-600 dark:text-slate-300 leading-6">This view counts only tasks visible for the selected date, so repeating tasks and start dates are respected.</p>
+                    </div> -->
+                `;
+                lucide.createIcons();
+            },
+
+            openStreakInsights() {
+                this.closeTaskInsights();
+                this.renderStreakInsights();
+                const modal = document.getElementById('streak-insights-modal');
+                const box = document.getElementById('streak-insights-box');
+                modal.classList.remove('hidden');
+
+                requestAnimationFrame(() => {
+                    modal.classList.remove('opacity-0');
+                    box.classList.remove('scale-95');
+                });
+            },
+
+            closeStreakInsights() {
+                const modal = document.getElementById('streak-insights-modal');
+                const box = document.getElementById('streak-insights-box');
+                modal.classList.add('opacity-0');
+                box.classList.add('scale-95');
+                setTimeout(() => modal.classList.add('hidden'), 200);
+            },
+
+            openTaskInsights() {
+                this.closeStreakInsights();
+                this.renderTaskInsights();
+                const modal = document.getElementById('task-insights-modal');
+                const box = document.getElementById('task-insights-box');
+                modal.classList.remove('hidden');
+
+                requestAnimationFrame(() => {
+                    modal.classList.remove('opacity-0');
+                    box.classList.remove('scale-95');
+                });
+            },
+
+            closeTaskInsights() {
+                const modal = document.getElementById('task-insights-modal');
+                const box = document.getElementById('task-insights-box');
+                modal.classList.add('opacity-0');
+                box.classList.add('scale-95');
+                setTimeout(() => modal.classList.add('hidden'), 200);
             },
 
             async loadData() {
@@ -907,34 +1187,11 @@
             },
 
             updateHeaderStats() {
-                const visibleTasks = this.data.tasks.filter(t => this.shouldShowTask(t, this.currentDate));
-                const completedToday = visibleTasks.filter(t => this.isTaskCompleted(t.id, this.currentDate)).length;
+                const taskStats = this.getTaskCompletionStats(this.currentDate);
                 const headerTasks = document.getElementById('header-tasks');
-                if (headerTasks) headerTasks.innerText = `${completedToday}/${visibleTasks.length}`;
+                if (headerTasks) headerTasks.innerText = `${taskStats.completedToday}/${taskStats.visibleTasks.length}`;
 
-                const activeDatesSet = new Set();
-                Object.values(this.data.taskCompletions).forEach(dates => dates.forEach(d => activeDatesSet.add(d)));
-
-                let streak = 0;
-                // Anchor the global streak calculation to the currently selected viewing date
-                let checkDate = this.parseDateString(this.currentDate);
-                const checkDateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
-
-                // If the current viewing date has no activity, start calculating backwards from yesterday
-                if (!activeDatesSet.has(checkDateStr)) {
-                    checkDate.setDate(checkDate.getDate() - 1);
-                }
-
-                for (let i = 0; i < 1000; i++) {
-                    const dStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
-                    if (activeDatesSet.has(dStr)) {
-                        streak++;
-                        checkDate.setDate(checkDate.getDate() - 1);
-                    } else {
-                        break;
-                    }
-                }
-
+                const streak = this.getGlobalActivityStreak(this.currentDate);
                 const headerStreak = document.getElementById('header-streak');
                 if (headerStreak) headerStreak.innerText = streak;
             },
