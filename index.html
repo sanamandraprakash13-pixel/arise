@@ -383,6 +383,35 @@
         </div>
     </div>
 
+    <!-- TASK COMPLETION DETAIL MODAL -->
+    <div id="completion-detail-modal"
+        class="fixed inset-0 bg-black/50 dark:bg-black/80 z-[70] hidden flex items-center justify-center p-4 transition-opacity opacity-0 backdrop-blur-sm">
+        <div id="completion-detail-box"
+            class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl transform scale-95 transition-transform duration-200">
+            <div
+                class="p-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-950/50">
+                <h3 class="text-lg font-bold text-slate-800 dark:text-white">Completion details</h3>
+                <button type="button" onclick="app.closeCompletionDetailModal()"
+                    class="text-slate-500 hover:text-slate-800 dark:hover:text-white p-1 transition"><i data-lucide="x"
+                        class="w-5 h-5"></i></button>
+            </div>
+            <div class="p-5 space-y-4">
+                <textarea id="completion-detail-input" rows="5"
+                    class="w-full resize-y bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-white"
+                    placeholder="What did you complete? (optional)"></textarea>
+                <div class="flex justify-end gap-3"><button type="button" onclick="app.closeCompletionDetailModal()"
+                        class="text-sm text-slate-500">Cancel</button><button type="button"
+                        onclick="app.saveCompletionDetail()"
+                        class="rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-sm font-semibold text-white">Save
+                        detail</button></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="morning-toast" role="status" aria-live="polite"
+        class="fixed bottom-6 left-1/2 z-[80] hidden w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 translate-y-3 rounded-xl bg-slate-900 px-4 py-3 text-center text-sm font-medium text-white shadow-xl opacity-0 transition-all duration-200 dark:bg-white dark:text-slate-900">
+    </div>
+
     <script>
         const PILLARS = [
             { id: 'health', name: 'Health', icon: 'heart', color: 'bg-rose-500', text: 'text-rose-500 dark:text-rose-400' },
@@ -395,6 +424,15 @@
         ];
 
         const EMOJIS = ['😫', '😕', '😐', '🙂', '😌', '🤩', '🔥'];
+        const MORNING_MESSAGES = [
+            'Go gently today—small steps still count.',
+            'Be kind to yourself. You don’t need to have it all figured out.',
+            'A steady start can become a meaningful day.',
+            'You’re in a good place—carry that energy forward.',
+            'Calm focus looks good on you. Keep it simple.',
+            'Great energy—put it toward what matters most.',
+            'You’re on fire—make today count!'
+        ];
 
         const DATA_DB_NAME = 'arise-storage';
         const DATA_DB_VERSION = 1;
@@ -402,7 +440,7 @@
         const DATA_KEY = 'life_os_v6';
 
         const createDefaultData = () => {
-            const data = { userName: 'Explorer', pillars: {}, tasks: [], taskCompletions: {}, journal: [], mood: {} };
+            const data = { userName: 'Explorer', pillars: {}, tasks: [], taskCompletions: {}, taskProgress: {}, journal: [], mood: {} };
             PILLARS.forEach(p => { data.pillars[p.id] = { goals: [], achievements: [] }; });
             return data;
         };
@@ -484,6 +522,7 @@
             activeAchievementsTab: 'in-progress',
             editingGoalId: null,
             editingTaskId: null,
+            completionDetailTaskId: null,
             progressWeekOffset: 0,
             progressMonthOffset: 0,
             saveTimeout: null,
@@ -752,6 +791,7 @@
                 });
                 normalized.tasks = Array.isArray(normalized.tasks) ? normalized.tasks : [];
                 normalized.taskCompletions = normalized.taskCompletions && typeof normalized.taskCompletions === 'object' ? normalized.taskCompletions : {};
+                normalized.taskProgress = normalized.taskProgress && typeof normalized.taskProgress === 'object' ? normalized.taskProgress : {};
                 normalized.journal = Array.isArray(normalized.journal) ? normalized.journal : [];
                 normalized.mood = normalized.mood && typeof normalized.mood === 'object' ? normalized.mood : {};
                 normalized.userName = normalized.userName || 'Explorer';
@@ -762,6 +802,7 @@
                 this.data = this.normalizeData(this.data);
                 if (!this.data.userName) this.data.userName = 'Explorer';
                 if (!this.data.taskCompletions) this.data.taskCompletions = {};
+                if (!this.data.taskProgress) this.data.taskProgress = {};
                 if (!this.data.mood) this.data.mood = {};
 
                 this.data.tasks.forEach(t => {
@@ -1243,8 +1284,77 @@
 
                 if (idx > -1) this.data.taskCompletions[taskId].splice(idx, 1);
                 else this.data.taskCompletions[taskId].push(dateStr);
+                if (idx > -1 && this.data.taskProgress[taskId] && this.data.taskProgress[taskId][dateStr]) {
+                    delete this.data.taskProgress[taskId][dateStr].completionNote;
+                }
 
                 this.saveData();
+            },
+
+            getTaskProgress(taskId, dateStr = this.currentDate) {
+                return (this.data.taskProgress[taskId] && this.data.taskProgress[taskId][dateStr]) || {};
+            },
+
+            setTaskProgress(taskId, field, value) {
+                const task = this.data.tasks.find(t => t.id === taskId);
+                if (!task || !['slider', 'counter'].includes(field)) return;
+                let numericValue = Number(value);
+                if (!Number.isFinite(numericValue)) return;
+                numericValue = Math.max(0, Math.round(numericValue));
+                if (!this.data.taskProgress[taskId]) this.data.taskProgress[taskId] = {};
+                if (!this.data.taskProgress[taskId][this.currentDate]) this.data.taskProgress[taskId][this.currentDate] = {};
+                this.data.taskProgress[taskId][this.currentDate][field] = numericValue;
+                this.saveData();
+                this.renderToday(document.getElementById('main-content'));
+                lucide.createIcons();
+            },
+
+            adjustTaskProgress(taskId, field, delta) {
+                const current = this.getTaskProgress(taskId)[field] || 0;
+                this.setTaskProgress(taskId, field, current + delta);
+            },
+
+            setTaskSliderPercent(taskId, percent) {
+                const task = this.data.tasks.find(t => t.id === taskId);
+                if (!task || !task.hasSlider) return;
+                const target = Number(task.sliderTarget) || 0;
+                const boundedPercent = Math.max(0, Math.min(100, Number(percent) || 0));
+                this.setTaskProgress(taskId, 'slider', Math.round((boundedPercent / 100) * target));
+            },
+
+            handleTaskCheckbox(taskId) {
+                this.toggleTaskFromToday(taskId);
+            },
+
+            openCompletionDetailModal(taskId) {
+                if (!this.isTaskCompleted(taskId, this.currentDate)) return;
+                this.completionDetailTaskId = taskId;
+                document.getElementById('completion-detail-input').value = this.getTaskProgress(taskId).completionNote || '';
+                const modal = document.getElementById('completion-detail-modal');
+                const box = document.getElementById('completion-detail-box');
+                modal.classList.remove('hidden');
+                requestAnimationFrame(() => { modal.classList.remove('opacity-0'); box.classList.remove('scale-95'); });
+                lucide.createIcons();
+            },
+
+            closeCompletionDetailModal() {
+                const modal = document.getElementById('completion-detail-modal');
+                const box = document.getElementById('completion-detail-box');
+                modal.classList.add('opacity-0'); box.classList.add('scale-95');
+                setTimeout(() => modal.classList.add('hidden'), 200);
+                this.completionDetailTaskId = null;
+            },
+
+            saveCompletionDetail() {
+                const taskId = this.completionDetailTaskId;
+                if (!taskId || !this.isTaskCompleted(taskId, this.currentDate)) return;
+                if (!this.data.taskProgress[taskId]) this.data.taskProgress[taskId] = {};
+                if (!this.data.taskProgress[taskId][this.currentDate]) this.data.taskProgress[taskId][this.currentDate] = {};
+                this.data.taskProgress[taskId][this.currentDate].completionNote = document.getElementById('completion-detail-input').value.trim();
+                this.saveData();
+                this.closeCompletionDetailModal();
+                this.renderToday(document.getElementById('main-content'));
+                lucide.createIcons();
             },
 
             updateHeaderStats() {
@@ -1376,20 +1486,35 @@
                             `;
                             pTasks.forEach(t => {
                                 const isDone = this.isTaskCompleted(t.id, this.currentDate);
+                                const progress = this.getTaskProgress(t.id, this.currentDate);
                                 let goalText = '';
                                 if (t.goalId) {
                                     const goal = this.data.pillars[p.id].goals.find(g => g.id === t.goalId);
                                     if (goal) goalText = `<p class="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1"><i data-lucide="target" class="w-3 h-3"></i> ${this.escapeHTML(goal.text)}</p>`;
                                 }
+                                const completionNote = progress.completionNote || '';
+                                const completionNoteText = isDone && completionNote ? `<p class="text-xs leading-5 text-slate-500 dark:text-slate-400 mt-1 whitespace-pre-wrap">${this.escapeHTML(completionNote)}</p>` : '';
+                                const completionDetailButton = isDone ? `<button type="button" onclick="app.openCompletionDetailModal('${t.id}')" class="mt-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:text-emerald-500">${completionNote ? 'Edit completion detail' : 'Add completion detail'}</button>` : '';
+                                const sliderValue = Math.round(Number(progress.slider) || 0);
+                                const counterValue = Math.round(Number(progress.counter) || 0);
+                                const sliderTarget = Math.max(1, Math.round(Number(t.sliderTarget) || 0));
+                                const counterTarget = Math.max(1, Math.round(Number(t.counterTarget) || 0));
+                                const sliderBarValue = Math.min(100, Math.round((sliderValue / sliderTarget) * 100));
+                                const sliderProgress = t.hasSlider ? `<div class="mt-3"><div class="flex justify-between text-[10px] text-slate-500 mb-1"><span>Slider progress</span><span class="${sliderValue >= sliderTarget ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : ''}">${sliderValue} / ${sliderTarget}${sliderValue >= sliderTarget ? ' · target reached' : ''}</span></div><div class="flex items-center gap-2"><input type="range" min="0" max="100" step="1" value="${sliderBarValue}" oninput="app.setTaskSliderPercent('${t.id}', this.value)" class="flex-1 accent-emerald-500"><input type="number" min="0" step="1" value="${sliderValue}" onchange="app.setTaskProgress('${t.id}', 'slider', this.value)" class="w-20 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-xs text-slate-800 dark:text-white"></div></div>` : '';
+                                const counterProgress = t.hasCounter ? `<div class="mt-3"><div class="flex justify-between text-[10px] text-slate-500 mb-1"><span>Count</span><span class="${counterValue >= counterTarget ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : ''}">${counterValue} / ${counterTarget}${counterValue >= counterTarget ? ' · target reached' : ''}</span></div><div class="flex items-center gap-2"><button type="button" onclick="app.adjustTaskProgress('${t.id}', 'counter', -1)" class="w-7 h-7 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300">−</button><input type="number" min="0" step="1" value="${counterValue}" onchange="app.setTaskProgress('${t.id}', 'counter', this.value)" class="w-20 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-xs text-slate-800 dark:text-white"><button type="button" onclick="app.adjustTaskProgress('${t.id}', 'counter', 1)" class="w-7 h-7 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300">+</button></div></div>` : '';
 
                                 html += `
                                     <div class="flex items-start space-x-3 p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800/80 transition-colors duration-300">
-                                        <button onclick="app.toggleTaskFromToday('${t.id}')" class="mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 ${isDone ? 'bg-emerald-500 border-emerald-500 text-white dark:text-slate-950' : 'border-slate-400 dark:border-slate-500'}">
+                                        <button onclick="app.handleTaskCheckbox('${t.id}')" class="mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 ${isDone ? 'bg-emerald-500 border-emerald-500 text-white dark:text-slate-950' : 'border-slate-400 dark:border-slate-500'}">
                                             ${isDone ? '<i data-lucide="check" class="w-3.5 h-3.5 stroke-[3]"></i>' : ''}
                                         </button>
                                         <div class="flex-1 min-w-0">
                                             <span class="text-sm block ${isDone ? 'line-through text-slate-400 dark:text-slate-600' : 'text-slate-800 dark:text-slate-200'}">${this.escapeHTML(t.text)}</span>
                                             ${goalText}
+                                            ${completionNoteText}
+                                            ${completionDetailButton}
+                                            ${sliderProgress}
+                                            ${counterProgress}
                                         </div>
                                     </div>
                                 `;
@@ -1408,6 +1533,21 @@
                 this.saveData();
                 this.renderToday(document.getElementById('main-content'));
                 lucide.createIcons();
+                this.showMorningToast(MORNING_MESSAGES[EMOJIS.indexOf(emoji)] || 'Wishing you a meaningful day.');
+            },
+
+            showMorningToast(message) {
+                const toast = document.getElementById('morning-toast');
+                toast.textContent = message;
+                clearTimeout(this.morningToastTimeout);
+                toast.classList.remove('hidden');
+                requestAnimationFrame(() => {
+                    toast.classList.remove('opacity-0', 'translate-y-3');
+                });
+                this.morningToastTimeout = setTimeout(() => {
+                    toast.classList.add('opacity-0', 'translate-y-3');
+                    setTimeout(() => toast.classList.add('hidden'), 200);
+                }, 3200);
             },
 
             saveMoodNote(note) {
@@ -1592,6 +1732,13 @@
                                     </label>
                                 `).join('')}
                             </div>
+
+                            <div class="space-y-2 rounded-lg border border-slate-200 dark:border-slate-700 p-3">
+                                <label class="flex items-center justify-between text-sm text-slate-700 dark:text-slate-300"><span>Add progress slider</span><input id="t-has-slider" type="checkbox" onchange="app.toggleTaskProgressOptions()" class="w-4 h-4 rounded text-emerald-500"></label>
+                                <div id="t-slider-options" class="hidden"><label class="text-xs text-slate-500">Target value<input id="t-slider-target" type="number" min="1" step="1" value="100" class="mt-1 w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-white"></label></div>
+                                <label class="flex items-center justify-between text-sm text-slate-700 dark:text-slate-300"><span>Add counter</span><input id="t-has-counter" type="checkbox" onchange="app.toggleTaskProgressOptions()" class="w-4 h-4 rounded text-emerald-500"></label>
+                                <div id="t-counter-options" class="hidden"><label class="text-xs text-slate-500">Target count<input id="t-counter-target" type="number" min="0" step="1" value="1" class="mt-1 w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-white"></label></div>
+                            </div>
                             
                             <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 py-2 rounded-lg text-sm font-semibold text-white">Add Task</button>
                         </form>
@@ -1609,6 +1756,7 @@
                                 <input id="edit-task-text-${t.id}" type="text" required value="${this.escapeHTML(t.text)}" class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-sm text-slate-800 dark:text-white">
                                 <div class="flex gap-2"><select id="edit-task-goal-${t.id}" class="flex-1 min-w-0 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-sm text-slate-700 dark:text-slate-300">${goalOpts.replace(`value=\"${t.goalId}\"`, `value=\"${t.goalId}\" selected`)}</select><select id="edit-task-freq-${t.id}" class="flex-1 min-w-0 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-sm text-slate-700 dark:text-slate-300">${['once', 'daily', 'weekly', 'biweekly', 'monthly', 'custom'].map(f => `<option value="${f}" ${t.frequency === f ? 'selected' : ''}>${f}</option>`).join('')}</select></div>
                                 <div class="flex justify-between text-[10px] text-slate-500">${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, idx) => `<label class="flex items-center gap-1"><input type="checkbox" value="${idx}" class="edit-custom-day-${t.id}" ${(t.customDays || []).includes(idx) ? 'checked' : ''}>${day}</label>`).join('')}</div>
+                                <div class="grid grid-cols-2 gap-2 text-xs text-slate-600 dark:text-slate-300"><label class="space-y-1"><span class="flex items-center gap-1"><input id="edit-task-has-slider-${t.id}" type="checkbox" ${(t.hasSlider ? 'checked' : '')}> Slider</span><input id="edit-task-slider-target-${t.id}" type="number" min="1" step="1" value="${t.sliderTarget ?? 100}" class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded px-2 py-1"></label><label class="space-y-1"><span class="flex items-center gap-1"><input id="edit-task-has-counter-${t.id}" type="checkbox" ${(t.hasCounter ? 'checked' : '')}> Counter</span><input id="edit-task-counter-target-${t.id}" type="number" min="0" step="1" value="${t.counterTarget ?? 1}" class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded px-2 py-1"></label></div>
                                 <div class="flex justify-end gap-3"><button type="submit" class="text-sm text-emerald-600 dark:text-emerald-400">Save</button><button type="button" onclick="app.cancelTaskEdit()" class="text-sm text-slate-500">Cancel</button></div>
                             </form>`;
                         return;
@@ -1633,11 +1781,22 @@
                 document.getElementById('custom-days-wrap').style.display = (f === 'custom') ? 'flex' : 'none';
             },
 
+            toggleTaskProgressOptions() {
+                document.getElementById('t-slider-options').classList.toggle('hidden', !document.getElementById('t-has-slider').checked);
+                document.getElementById('t-counter-options').classList.toggle('hidden', !document.getElementById('t-has-counter').checked);
+            },
+
             addTask(e) {
                 e.preventDefault();
                 const text = document.getElementById('t-text').value.trim();
                 const goalId = document.getElementById('t-goal').value;
                 const freq = document.getElementById('t-freq').value;
+                const hasSlider = document.getElementById('t-has-slider').checked;
+                const hasCounter = document.getElementById('t-has-counter').checked;
+                const sliderTarget = parseInt(document.getElementById('t-slider-target').value, 10);
+                const counterTarget = parseInt(document.getElementById('t-counter-target').value, 10);
+                if (hasSlider && (!Number.isInteger(sliderTarget) || sliderTarget <= 0)) return alert('Enter a whole-number slider target greater than zero.');
+                if (hasCounter && (!Number.isInteger(counterTarget) || counterTarget <= 0)) return alert('Enter a counter target greater than zero.');
 
                 let customDays = [];
                 if (freq === 'custom') {
@@ -1652,6 +1811,10 @@
                     goalId: goalId || null,
                     frequency: freq,
                     customDays: customDays,
+                    hasSlider: hasSlider,
+                    sliderTarget: hasSlider ? sliderTarget : null,
+                    hasCounter: hasCounter,
+                    counterTarget: hasCounter ? counterTarget : null,
                     startDate: this.currentDate
                 });
 
@@ -1664,6 +1827,7 @@
             deleteTask(id) {
                 this.data.tasks = this.data.tasks.filter(t => t.id !== id);
                 delete this.data.taskCompletions[id];
+                delete this.data.taskProgress[id];
                 this.saveData();
                 this.renderModalContent();
                 lucide.createIcons();
@@ -1680,6 +1844,14 @@
                 task.text = text;
                 task.goalId = document.getElementById(`edit-task-goal-${id}`).value || null;
                 task.frequency = document.getElementById(`edit-task-freq-${id}`).value;
+                task.hasSlider = document.getElementById(`edit-task-has-slider-${id}`).checked;
+                task.hasCounter = document.getElementById(`edit-task-has-counter-${id}`).checked;
+                const sliderTarget = parseInt(document.getElementById(`edit-task-slider-target-${id}`).value, 10);
+                const counterTarget = parseInt(document.getElementById(`edit-task-counter-target-${id}`).value, 10);
+                if (task.hasSlider && (!Number.isInteger(sliderTarget) || sliderTarget <= 0)) return alert('Enter a whole-number slider target greater than zero.');
+                if (task.hasCounter && (!Number.isInteger(counterTarget) || counterTarget <= 0)) return alert('Enter a counter target greater than zero.');
+                task.sliderTarget = task.hasSlider ? sliderTarget : null;
+                task.counterTarget = task.hasCounter ? counterTarget : null;
                 const customDays = Array.from(document.querySelectorAll(`.edit-custom-day-${id}:checked`)).map(input => parseInt(input.value));
                 if (task.frequency === 'custom' && !customDays.length) return alert('Select at least one custom day.');
                 task.customDays = customDays;
