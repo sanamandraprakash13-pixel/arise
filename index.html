@@ -64,6 +64,14 @@
             transition: transform 0.2s ease;
         }
 
+        #task-detail-drawer {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+        }
+
+        #task-detail-backdrop {
+            transition: opacity 0.2s ease;
+        }
+
         .modal-open {
             transform: translateY(0%);
         }
@@ -255,8 +263,9 @@
             </div>
 
             <div class="p-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
-                <div class="grid grid-cols-1 sm:grid-cols-[1.3fr_0.7fr_0.7fr] gap-3">
-                    <div class="rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-500 text-white p-4 shadow-lg">
+                <div class="grid grid-cols-2 sm:grid-cols-[1.3fr_0.7fr_0.7fr] gap-3">
+                    <div
+                        class="col-span-2 sm:col-span-1 rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-500 text-white p-4 shadow-lg">
                         <div class="flex items-start justify-between gap-3">
                             <div>
                                 <div class="text-[10px] uppercase tracking-[0.2em] text-white/80 font-semibold">
@@ -518,11 +527,14 @@
             previousTab: 'today',
             currentDate: '',
             activePillarId: null,
+            activeGrowthTab: 'system-pillars',
             activeModalTab: 'tasks',
             activeAchievementsTab: 'in-progress',
             editingGoalId: null,
             editingTaskId: null,
             completionDetailTaskId: null,
+            selectedTaskDetailId: null,
+            taskHeatmapMonthOffset: 0,
             progressWeekOffset: 0,
             progressMonthOffset: 0,
             saveTimeout: null,
@@ -1224,6 +1236,229 @@
                 return { scheduled, completed, rate: scheduled ? Math.round((completed / scheduled) * 100) : 0 };
             },
 
+            getTaskLifetimeStats(task, referenceDateStr = this.currentDate) {
+                const referenceDate = this.parseDateString(referenceDateStr);
+                const startDate = this.parseDateString(task.startDate);
+                let shown = 0;
+
+                if (startDate <= referenceDate) {
+                    for (let d = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate()); d <= referenceDate; d.setDate(d.getDate() + 1)) {
+                        if (this.shouldShowTask(task, this.dateToString(d))) shown++;
+                    }
+                }
+
+                const completed = (this.data.taskCompletions[task.id] || []).filter(dateStr => {
+                    const completionDate = this.parseDateString(dateStr);
+                    return completionDate <= referenceDate;
+                }).length;
+
+                return {
+                    shown,
+                    completed,
+                    rate: shown ? Math.round((completed / shown) * 100) : 0
+                };
+            },
+
+            getTaskDetailStats(task, referenceDateStr = this.currentDate) {
+                const referenceDate = this.parseDateString(referenceDateStr);
+                const startDate = this.parseDateString(task.startDate);
+                const todayStr = this.currentDate;
+                let scheduled = 0;
+                let completed = 0;
+                let missed = 0;
+                let currentStreak = 0;
+                let bestStreak = 0;
+
+                for (let d = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate()); d <= referenceDate; d.setDate(d.getDate() + 1)) {
+                    const dateStr = this.dateToString(d);
+                    if (!this.shouldShowTask(task, dateStr)) continue;
+
+                    scheduled++;
+                    const isCompleted = this.isTaskCompleted(task.id, dateStr);
+                    const isPendingToday = dateStr === todayStr && dateStr === referenceDateStr && !isCompleted;
+
+                    if (isCompleted) {
+                        completed++;
+                        currentStreak++;
+                        bestStreak = Math.max(bestStreak, currentStreak);
+                    } else if (isPendingToday) {
+                        bestStreak = Math.max(bestStreak, currentStreak);
+                    } else {
+                        missed++;
+                        currentStreak = 0;
+                    }
+                }
+
+                return {
+                    scheduled,
+                    completed,
+                    missed,
+                    rate: scheduled ? Math.round((completed / scheduled) * 100) : 0,
+                    currentStreak,
+                    bestStreak,
+                    startDateLabel: this.formatDisplayDate(task.startDate),
+                    frequencyLabel: (task.frequency || 'once').charAt(0).toUpperCase() + (task.frequency || 'once').slice(1)
+                };
+            },
+
+            renderTaskHeatmap(task) {
+                const referenceDate = this.parseDateString(this.currentDate);
+                const month = new Date(referenceDate.getFullYear(), referenceDate.getMonth() + this.taskHeatmapMonthOffset, 1);
+                const firstGridDay = new Date(month.getFullYear(), month.getMonth(), 1 - month.getDay());
+                const todayStr = this.currentDate;
+                const weeks = [];
+
+                for (let row = 0; row < 6; row++) {
+                    const week = [];
+                    for (let col = 0; col < 7; col++) {
+                        const day = new Date(firstGridDay.getFullYear(), firstGridDay.getMonth(), firstGridDay.getDate() + (row * 7) + col);
+                        const dateStr = this.dateToString(day);
+                        const inMonth = day.getMonth() === month.getMonth();
+                        const scheduled = inMonth && this.shouldShowTask(task, dateStr);
+                        const completed = scheduled && this.isTaskCompleted(task.id, dateStr);
+                        const isFuture = dateStr > todayStr;
+                        const isBeforeStart = this.parseDateString(dateStr) < this.parseDateString(task.startDate);
+
+                        let cellClass = 'border-transparent bg-transparent text-slate-400 dark:text-slate-600';
+
+                        if (!inMonth || isBeforeStart || !scheduled || isFuture) {
+                            cellClass = 'border-transparent bg-transparent text-slate-300 dark:text-slate-700';
+                        } else if (completed) {
+                            cellClass = 'border-emerald-500/40 bg-emerald-500/20 text-emerald-950 dark:text-emerald-50';
+                        } else {
+                            cellClass = 'border-rose-500/35 bg-rose-500/15 text-rose-900 dark:text-rose-50';
+                        }
+
+                        week.push(`
+                            <div title="${dateStr}"
+                                class="aspect-square rounded-lg border ${cellClass} flex items-center justify-center transition-colors duration-300">
+                                <span class="text-[10px] leading-none font-semibold">${day.getDate()}</span>
+                            </div>
+                        `);
+                    }
+                    weeks.push(week.join(''));
+                }
+
+                return `
+                    <div class="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-3 space-y-3">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <div class="text-sm font-semibold text-slate-800 dark:text-white">Task heat map</div>
+                                <div class="text-[11px] text-slate-500 dark:text-slate-400">${month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</div>
+                            </div>
+                            <div class="flex gap-1">
+                                <button type="button" onclick="app.changeTaskHeatmapMonth(-1)" title="Previous month" class="p-1.5 rounded-lg text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 transition"><i data-lucide="chevron-left" class="w-3.5 h-3.5"></i></button>
+                                <button type="button" onclick="app.changeTaskHeatmapMonth(1)" title="Next month" class="p-1.5 rounded-lg text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 transition"><i data-lucide="chevron-right" class="w-3.5 h-3.5"></i></button>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="grid grid-cols-7 gap-0.5">
+                                ${weeks.join('')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            },
+
+            renderTaskDetailDrawer(task) {
+                if (!task) return '';
+                const stats = this.getTaskDetailStats(task, this.currentDate);
+                const heatmapPanel = this.renderTaskHeatmap(task);
+                const pill = PILLARS.find(p => p.id === task.pillar) || { color: 'bg-slate-400', name: 'Unknown' };
+
+                return `
+                    <div id="task-detail-backdrop" onclick="app.closeTaskDetail()" class="fixed inset-0 z-[54] bg-black/45 dark:bg-black/70 opacity-100"></div>
+                    <div id="task-detail-drawer" class="fixed inset-x-0 bottom-0 z-[55] mx-auto w-full max-w-3xl rounded-t-[1.75rem] border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl translate-y-0 opacity-100">
+                        <div class="max-h-[88vh] overflow-y-auto hide-scrollbar">
+                            <div class="sticky top-0 z-10 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-4 py-4 rounded-t-[1.75rem]">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <div class="flex items-center gap-2 min-w-0">
+                                            <span class="w-2.5 h-2.5 rounded-full ${pill.color} shrink-0"></span>
+                                            <h3 class="text-lg font-bold text-slate-800 dark:text-white truncate">${this.escapeHTML(task.text)}</h3>
+                                        </div>
+                                        <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">${pill.name} • ${stats.frequencyLabel}</p>
+                                    </div>
+                                    <button type="button" onclick="app.closeTaskDetail()" class="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition"><i data-lucide="x" class="w-5 h-5"></i></button>
+                                </div>
+                            </div>
+
+                            <div class="p-4 space-y-4 pb-safe">
+                                <div class="rounded-3xl bg-gradient-to-br from-emerald-500 to-cyan-500 text-white p-5 shadow-lg">
+                                    <div class="text-[10px] uppercase tracking-[0.22em] text-white/80 font-semibold">Completion rate</div>
+                                    <div class="mt-2 text-4xl font-bold leading-none">${stats.rate}%</div>
+                                    <div class="mt-3 h-2.5 rounded-full bg-white/20 overflow-hidden">
+                                        <div class="h-full rounded-full bg-white" style="width: ${Math.min(stats.rate, 100)}%"></div>
+                                    </div>
+                                    <div class="mt-3 text-sm text-white/90">${stats.completed} of ${stats.scheduled} scheduled occurrences completed.</div>
+                                </div>
+
+                                <div class="grid grid-cols-3 gap-3">
+                                    <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-3 shadow-sm">
+                                        <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Scheduled</div>
+                                        <div class="mt-2 text-2xl font-bold text-slate-800 dark:text-white">${stats.scheduled}</div>
+                                    </div>
+                                    <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-3 shadow-sm">
+                                        <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Completed</div>
+                                        <div class="mt-2 text-2xl font-bold text-emerald-600 dark:text-emerald-400">${stats.completed}</div>
+                                    </div>
+                                    <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-3 shadow-sm">
+                                        <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Missed</div>
+                                        <div class="mt-2 text-2xl font-bold text-slate-700 dark:text-slate-300">${stats.missed}</div>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-3 shadow-sm">
+                                        <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Current streak</div>
+                                        <div class="mt-2 text-2xl font-bold text-slate-800 dark:text-white">${stats.currentStreak}</div>
+                                    </div>
+                                    <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-3 shadow-sm">
+                                        <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Best streak</div>
+                                        <div class="mt-2 text-2xl font-bold text-slate-800 dark:text-white">${stats.bestStreak}</div>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-4 shadow-sm">
+                                        <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Start date</div>
+                                        <div class="mt-2 text-sm font-semibold text-slate-800 dark:text-white">${stats.startDateLabel}</div>
+                                    </div>
+                                    <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-4 shadow-sm">
+                                        <div class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Frequency</div>
+                                        <div class="mt-2 text-sm font-semibold text-slate-800 dark:text-white">${stats.frequencyLabel}</div>
+                                    </div>
+                                </div>
+
+                                ${heatmapPanel}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            },
+
+            openTaskDetail(taskId) {
+                this.selectedTaskDetailId = taskId;
+                this.taskHeatmapMonthOffset = 0;
+                this.renderGrowth(document.getElementById('main-content'));
+                requestAnimationFrame(() => lucide.createIcons());
+            },
+
+            closeTaskDetail() {
+                if (!this.selectedTaskDetailId) return;
+                this.selectedTaskDetailId = null;
+                this.taskHeatmapMonthOffset = 0;
+                this.renderGrowth(document.getElementById('main-content'));
+                requestAnimationFrame(() => lucide.createIcons());
+            },
+
+            changeTaskHeatmapMonth(offset) {
+                if (!this.selectedTaskDetailId) return;
+                this.taskHeatmapMonthOffset += offset;
+                this.renderGrowth(document.getElementById('main-content'));
+                requestAnimationFrame(() => lucide.createIcons());
+            },
+
             getMoodTrend(startDate, days = 7) {
                 const values = { '😫': 1, '😕': 2, '😐': 3, '🙂': 4, '😌': 4, '🤩': 5, '🔥': 5 };
                 const entries = [];
@@ -1564,29 +1799,120 @@
             },
 
             // --- TAB 2: GROWTH ---
+            setGrowthTab(tabId) {
+                this.activeGrowthTab = tabId;
+                this.renderGrowth(document.getElementById('main-content'));
+                lucide.createIcons();
+            },
+
             renderGrowth(container) {
+                const isSystemPillars = this.activeGrowthTab === 'system-pillars';
+                const tabBase = 'flex-1 py-2.5 px-3 rounded-xl text-sm font-semibold border transition min-w-0';
+                const activeTabClass = 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm';
+                const inactiveTabClass = 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200';
+
                 let html = `
-                    <h2 class="text-2xl font-bold mb-6 text-slate-800 dark:text-white">System Pillars</h2>
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="mb-6 rounded-2xl bg-slate-100 dark:bg-slate-950 p-1 flex gap-1">
+                        <button onclick="app.setGrowthTab('system-pillars')" class="${tabBase} ${isSystemPillars ? activeTabClass : inactiveTabClass}">System Pillars</button>
+                        <button onclick="app.setGrowthTab('task-streak')" class="${tabBase} ${!isSystemPillars ? activeTabClass : inactiveTabClass}">Task Streak</button>
+                    </div>
                 `;
 
-                PILLARS.forEach(p => {
-                    const activeTasks = this.data.tasks.filter(t => t.pillar === p.id && this.shouldShowTask(t, this.currentDate) && !this.isTaskCompleted(t.id, this.currentDate)).length;
+                if (isSystemPillars) {
+                    html += `
+                        <h2 class="text-2xl font-bold mb-6 text-slate-800 dark:text-white">System Pillars</h2>
+                        <div class="grid grid-cols-2 gap-4">
+                    `;
+
+                    PILLARS.forEach(p => {
+                        const activeTasks = this.data.tasks.filter(t => t.pillar === p.id && this.shouldShowTask(t, this.currentDate) && !this.isTaskCompleted(t.id, this.currentDate)).length;
+
+                        html += `
+                            <button onclick="app.openModal('${p.id}')" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl flex flex-col items-center justify-center space-y-3 shadow-sm hover:border-slate-300 dark:hover:border-slate-600 transition active:scale-95 text-center transition-colors duration-300">
+                                <div class="p-4 rounded-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 ${p.text}">
+                                    <i data-lucide="${p.icon}" class="w-7 h-7"></i>
+                                </div>
+                                <div>
+                                    <span class="font-semibold text-sm text-slate-800 dark:text-white block">${p.name}</span>
+                                    <span class="text-[10px] text-slate-500 uppercase tracking-wider">${activeTasks} open today</span>
+                                </div>
+                            </button>
+                        `;
+                    });
+
+                    html += `</div>`;
+                } else {
+                    const taskStreakItems = this.data.tasks
+                        .filter(t => this.parseDateString(t.startDate) <= this.parseDateString(this.currentDate))
+                        .map(t => {
+                            const pillar = PILLARS.find(p => p.id === t.pillar) || { name: 'Unknown', color: 'bg-slate-400', text: 'text-slate-500' };
+                            const stats = this.getTaskLifetimeStats(t, this.currentDate);
+                            return { task: t, pillar, stats };
+                        })
+                        .sort((a, b) => b.stats.completed - a.stats.completed || b.stats.shown - a.stats.shown || a.task.text.localeCompare(b.task.text));
 
                     html += `
-                        <button onclick="app.openModal('${p.id}')" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl flex flex-col items-center justify-center space-y-3 shadow-sm hover:border-slate-300 dark:hover:border-slate-600 transition active:scale-95 text-center transition-colors duration-300">
-                            <div class="p-4 rounded-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 ${p.text}">
-                                <i data-lucide="${p.icon}" class="w-7 h-7"></i>
+                    <div>
+                        <div class="mb-3 flex items-end justify-between gap-3">
+                            <div class="min-w-0">
+                                <h2 class="text-2xl font-bold text-slate-800 dark:text-white">Task Streak</h2>
+                                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Lifetime task appearances and completions through today.</p>
                             </div>
-                            <div>
-                                <span class="font-semibold text-sm text-slate-800 dark:text-white block">${p.name}</span>
-                                <span class="text-[10px] text-slate-500 uppercase tracking-wider">${activeTasks} open today</span>
-                            </div>
-                        </button>
-                    `;
-                });
+                            <span class="shrink-0 text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">${taskStreakItems.length} tasks</span>
+                        </div>
+                `;
 
-                html += `</div>`;
+                    if (taskStreakItems.length === 0) {
+                        html += `
+                            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 text-center shadow-sm">
+                                <div class="w-11 h-11 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-3"><i data-lucide="list-checks" class="w-5 h-5 text-slate-400"></i></div>
+                                <p class="text-sm text-slate-500 dark:text-slate-400">No task streak data yet.</p>
+                            </div>
+                        `;
+                    } else {
+                        html += `<div class="space-y-3">`;
+                        taskStreakItems.forEach(({ task, pillar, stats }) => {
+                            html += `
+                                <button type="button" onclick="app.openTaskDetail('${task.id}')" class="w-full text-left bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 shadow-sm overflow-hidden transition-colors duration-300 hover:border-emerald-300 dark:hover:border-emerald-500/40 hover:shadow-md active:scale-[0.99] focus:outline-none focus:ring-2 focus:ring-emerald-500/30">
+                                    <div class="flex items-start justify-between gap-2 min-w-0">
+                                        <div class="min-w-0">
+                                            <div class="flex items-center gap-2 min-w-0">
+                                                <span class="w-2 h-2 rounded-full ${pillar.color} shrink-0"></span>
+                                                <h3 class="text-sm font-semibold text-slate-800 dark:text-white truncate">${this.escapeHTML(task.text)}</h3>
+                                            </div>
+                                            <div class="mt-1 text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">${pillar.name} • ${task.frequency || 'once'}</div>
+                                        </div>
+                                        <div class="shrink-0 rounded-full bg-emerald-50 dark:bg-emerald-500/10 px-2 py-1 text-xs font-bold text-emerald-600 dark:text-emerald-400">${stats.rate}%</div>
+                                    </div>
+
+                                    <div class="mt-3 grid grid-cols-2 gap-2">
+                                        <div class="min-w-0 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-3 py-2">
+                                            <div class="text-base font-bold leading-none text-slate-800 dark:text-white">${stats.shown}</div>
+                                            <div class="mt-1 text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">Scheduled</div>
+                                        </div>
+                                        <div class="min-w-0 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-3 py-2">
+                                            <div class="text-base font-bold leading-none text-slate-800 dark:text-white">${stats.completed}</div>
+                                            <div class="mt-1 text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">Completed</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-3 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                                        <div class="h-full rounded-full bg-emerald-500" style="width: ${Math.min(stats.rate, 100)}%"></div>
+                                    </div>
+                                    <div class="mt-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">View details ›</div>
+                                </button>
+                            `;
+                        });
+                        html += `</div>`;
+                    }
+
+                    const selectedTask = this.data.tasks.find(task => task.id === this.selectedTaskDetailId);
+                    if (selectedTask) {
+                        html += this.renderTaskDetailDrawer(selectedTask);
+                    }
+
+                    html += `</div>`;
+                }
                 container.innerHTML = html;
             },
 
